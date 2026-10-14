@@ -43,6 +43,21 @@ function callback_init()
             Database::statement($sql);
         }
     }
+
+    // 老库补索引：install.sql 用的是 CREATE TABLE IF NOT EXISTS，表已存在时不会补列/补索引，
+    // 而「已删订单」查询没有这个索引会慢到不可用（详见 card_actions.php 里的说明）。
+    // 索引不存在才建，存在则跳过 —— 本函数由插件管理页每次「启用」触发，必须幂等。
+    $prefix = Database::prefix();
+    $table  = $prefix . 'goods_virtual_card';
+    $index  = 'idx_goods_order_sold';
+    $has = Database::fetchOne(
+        "SELECT 1 AS ok FROM information_schema.STATISTICS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1",
+        [$table, $index]
+    );
+    if (!$has) {
+        Database::statement("ALTER TABLE `{$table}` ADD INDEX `{$index}` (`goods_id`, `order_id`, `sold_at`, `status`)");
+    }
 }
 
 // 删除插件时执行：清理插件数据

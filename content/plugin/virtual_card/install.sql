@@ -22,5 +22,10 @@ CREATE TABLE IF NOT EXISTS `em_goods_virtual_card` (
     KEY `idx_goods_spec_status` (`goods_id`, `spec_id`, `status`, `id`),
     KEY `idx_spec` (`spec_id`),
     KEY `idx_status` (`status`),
-    KEY `idx_order` (`order_id`)
+    KEY `idx_order` (`order_id`),
+    -- 「已删订单」相关查询专用。列序是承重的，别调：
+    --   goods_id 等值 → order_id 供 MIN(order_id) 迭代定位与 IN 范围扫
+    --   → sold_at 紧跟等值前缀，让单订单 MIN/MAX(sold_at) 退化成索引定位
+    --   → status 放最后，让 goods_id + status + order_id 组合也能走覆盖索引
+    KEY `idx_goods_order_sold` (`goods_id`, `order_id`, `sold_at`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='虚拟商品（卡密）库存表';

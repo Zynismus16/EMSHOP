@@ -1,7 +1,7 @@
 <?php
 /**
 Plugin Name: 虚拟卡密商品类型
-Version: 1.1.5
+Version: 1.1.7
 Plugin URL:
 Description: 虚拟商品插件，支持卡密 / 账号 / 邮箱等。既可一键发货（从卡密库自动提取），也可切换为人工发货（管理员手动填写）。
 Author: EMSHOP
@@ -677,7 +677,7 @@ addAction('goods_before_force_delete', function ($goodsId) {
 // 后台 AJAX 路由注册（卡密增删查导出，通过 admin_plugin_action 钩子分发）
 // order_export_cards：按订单 ID 导出订单里所有 virtual_card 商品的发货内容为 txt
 // ================================================================
-foreach (['card_list', 'card_import', 'card_import_page', 'card_delete', 'card_clear_available', 'card_export', 'card_save', 'card_priority', 'card_mark_sold', 'card_manager', 'order_export_cards'] as $_cardAction) {
+foreach (['card_list', 'card_deleted_orders', 'card_import', 'card_import_page', 'card_delete', 'card_clear_available', 'card_export', 'card_save', 'card_priority', 'card_mark_sold', 'card_manager', 'order_export_cards'] as $_cardAction) {
     addAction('admin_plugin_action_' . $_cardAction, function () {
         require __DIR__ . '/card_actions.php';
         exit;

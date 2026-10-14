@@ -6,7 +6,7 @@
  * 商户端由 /user/merchant/goods.php 直接 require 本文件，并设置
  * $virtualCardRequireOwnerId 限制只能操作自有商品。
  *
- * 支持的 action：card_list / card_import / card_delete / card_clear_available / card_export / card_manager
+ * 支持的 action：card_list / card_deleted_orders / card_import / card_delete / card_clear_available / card_export / card_manager
  */
 if (!defined('EM_ROOT')) {
     exit('Access Denied');
@@ -32,6 +32,123 @@ $virtualCardAssertGoodsAccess = static function (int $goodsId, bool $asPage = fa
     }
 };
 
+/**
+ * 「已删订单」查询所依赖的索引是否就绪。
+ * 结果按请求缓存 —— 老库没跑过升级时整条查询会退化成全表扫，必须提前知道。
+ */
+function virtualCardHasOrderIndex(): bool
+{
+    static $has = null;
+    if ($has !== null) {
+        return $has;
+    }
+    $prefix = Database::prefix();
+    $row = Database::fetchOne(
+        "SELECT 1 AS ok FROM information_schema.STATISTICS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1",
+        [$prefix . 'goods_virtual_card', 'idx_goods_order_sold']
+    );
+    return $has = ($row !== null);
+}
+
+/**
+ * 找出某商品下出现过的订单ID，并区分「订单还在」和「订单已被删除」。
+ *
+ * 已删订单的唯一痕迹是卡密表里残留的 order_id（后台删单是物理删除，
+ * em_order / em_order_goods / em_delivery_queue 都没了，卡密表却不删）。
+ *
+ * 为什么不用 SELECT DISTINCT order_id：MySQL 5.7 对
+ *   SELECT DISTINCT order_id FROM cards WHERE goods_id = ?
+ * 不会走 loose index scan（EXPLAIN 实测是整段索引扫描）。200 万行耗时 655ms，
+ * 而且随**卡密数**线性增长 —— 一个商品几百万张卡就是秒级。
+ *
+ * 改成逐次取下一个 MIN(order_id)：优化器把它压成 "Select tables optimized away"，
+ * 一次索引定位拿到一个订单号，200 万行实测 1.8ms，只随**订单数**增长
+ * （一个商品的订单数通常是几百，跟卡密数无关）。
+ *
+ * @return array{alive: int[], deleted: int[]} 两个列表都按订单ID 升序
+ */
+function virtualCardFindOrderIds(int $goodsId): array
+{
+    static $cache = [];
+    if (isset($cache[$goodsId])) {
+        return $cache[$goodsId];
+    }
+
+    $prefix = Database::prefix();
+    $ids    = virtualCardEnumerateOrderIds($goodsId);
+
+    // 分批问 em_order：查得到的算「还在」，剩下的就是「已删」
+    $aliveMap = [];
+    foreach (array_chunk($ids, 1000) as $chunk) {
+        $ph = implode(',', array_fill(0, count($chunk), '?'));
+        foreach (Database::query("SELECT id FROM `{$prefix}order` WHERE id IN ({$ph})", $chunk) as $r) {
+            $aliveMap[(int) $r['id']] = true;
+        }
+    }
+
+    $alive = $deleted = [];
+    foreach ($ids as $id) {
+        if (isset($aliveMap[$id])) {
+            $alive[] = $id;
+        } else {
+            $deleted[] = $id;
+        }
+    }
+    return $cache[$goodsId] = ['alive' => $alive, 'deleted' => $deleted];
+}
+
+/**
+ * 枚举某商品下出现过的全部 order_id（升序）。
+ *
+ * 有 (goods_id, order_id, ...) 索引时走 MIN 迭代；没有时退回一次 DISTINCT 扫描。
+ * 索引缺失时**绝不能**用 MIN 迭代 —— 每步都得扫完该商品的全部卡密，比不优化还惨。
+ */
+function virtualCardEnumerateOrderIds(int $goodsId): array
+{
+    $prefix = Database::prefix();
+    $table  = $prefix . 'goods_virtual_card';
+    $ids    = [];
+
+    if (virtualCardHasOrderIndex()) {
+        // 每个订单一次索引定位，只随订单数增长
+        $last = 0;
+        while (count($ids) < 5000) {   // 安全阀：订单数异常时不至于把请求拖死
+            $row = Database::fetchOne(
+                "SELECT MIN(order_id) AS v FROM `{$table}` WHERE goods_id = ? AND order_id > ?",
+                [$goodsId, $last]
+            );
+            if ($row === null || $row['v'] === null) {
+                break;
+            }
+            $ids[] = $last = (int) $row['v'];
+        }
+        return $ids;
+    }
+
+    // 老库没索引：一次整段索引扫描。慢，但只慢一次，且结果与上面等价。
+    $rows = Database::query(
+        "SELECT DISTINCT order_id FROM `{$table}` WHERE goods_id = ? AND order_id > 0",
+        [$goodsId]
+    );
+    $ids = array_map('intval', array_column($rows, 'order_id'));
+    sort($ids);
+    return $ids;
+}
+
+/**
+ * 把订单ID 列表拼成可直接进 WHERE 的 IN 条件（列表为空时返回恒假条件）。
+ * 返回 [sql片段, 需要追加的绑定参数]。
+ */
+function virtualCardOrderIdCondition(array $ids, string $column = 'order_id'): array
+{
+    if (!$ids) {
+        return ['1 = 0', []];
+    }
+    $ph = implode(',', array_fill(0, count($ids), '?'));
+    return ["{$column} IN ({$ph})", $ids];
+}
+
 // ================================================================
 // 卡密列表（供 AJAX 分页查询）
 // ================================================================
@@ -42,6 +159,7 @@ if ($action === 'card_list') {
     }
     $virtualCardAssertGoodsAccess($goodsId);
 
+    $prefix = Database::prefix();
     $page = max(1, (int)($_POST['page'] ?? 1));
     $limit = min(100, max(10, (int)($_POST['limit'] ?? 20)));
     $offset = ($page - 1) * $limit;
@@ -69,27 +187,29 @@ if ($action === 'card_list') {
         $params[] = $specIdFilter;
     }
 
-    // 订单关联状态筛选。订单被后台删除时卡密不跟着删（order_id 仍留着），
-    // 所以「订单已删除」= 有 order_id 但 em_order 里已查不到对应行。
-    // order_id > 0 同时把未售卡密（order_id 为 NULL）排除掉。
+    // 订单关联状态筛选。原先写成 NOT EXISTS 相关子查询 —— 卡密表每一行都要去
+    // em_order 探一次，几百万行就是几百万次探测（200 万行实测 6.6 秒）。
+    // 改成先用 virtualCardFindOrderIds() 拿到订单ID 列表（O(订单数)），
+    // 再用 IN 走索引范围扫。列表为空时给恒假条件，不能退化成「不过滤」。
     $orderState = (string)($_POST['order_state'] ?? '');
     if ($orderState === 'missing' || $orderState === 'exists') {
-        $prefix = Database::prefix();
-        $conditions[] = 'order_id > 0 AND ' . ($orderState === 'missing' ? 'NOT EXISTS' : 'EXISTS')
-            . ' (SELECT 1 FROM `' . $prefix . 'order` o'
-            . ' WHERE o.id = `' . $prefix . 'goods_virtual_card`.`order_id`)';
+        $found = virtualCardFindOrderIds($goodsId);
+        $ids   = $orderState === 'missing' ? $found['deleted'] : $found['alive'];
+        [$cond, $condParams] = virtualCardOrderIdCondition($ids);
+        $conditions[] = $cond;
+        $params = array_merge($params, $condParams);
     }
 
     $whereSql = 'WHERE ' . implode(' AND ', $conditions);
 
     $total = Database::query(
-        "SELECT COUNT(*) as cnt FROM " . Database::prefix() . "goods_virtual_card {$whereSql}",
+        "SELECT COUNT(*) as cnt FROM {$prefix}goods_virtual_card {$whereSql}",
         $params
     );
     $totalCount = (int)($total[0]['cnt'] ?? 0);
 
     $cards = Database::query(
-        "SELECT * FROM " . Database::prefix() . "goods_virtual_card {$whereSql} ORDER BY id ASC LIMIT {$offset}, {$limit}",
+        "SELECT * FROM {$prefix}goods_virtual_card {$whereSql} ORDER BY id ASC LIMIT {$offset}, {$limit}",
         $params
     );
     // 全局序号（跨页连续，序号 1 = 最早入库），与导出区间一一对应
@@ -99,7 +219,7 @@ if ($action === 'card_list') {
 
     // 统计各状态数量（供前端选项卡和规格库存卡片刷新）
     $statsRows = Database::query(
-        "SELECT status, COUNT(*) as cnt FROM " . Database::prefix() . "goods_virtual_card WHERE goods_id = ? GROUP BY status",
+        "SELECT status, COUNT(*) as cnt FROM {$prefix}goods_virtual_card WHERE goods_id = ? GROUP BY status",
         [$goodsId]
     );
     $statsMap = ['available' => 0, 'sold' => 0, 'marked' => 0, 'total' => 0];
@@ -115,7 +235,7 @@ if ($action === 'card_list') {
 
     // 每个规格的可用卡密数（供前端规格库存概览卡片刷新）
     $specStatsRows = Database::query(
-        "SELECT spec_id, COUNT(*) as cnt FROM " . Database::prefix() . "goods_virtual_card WHERE goods_id = ? AND status = 1 AND spec_id IS NOT NULL GROUP BY spec_id",
+        "SELECT spec_id, COUNT(*) as cnt FROM {$prefix}goods_virtual_card WHERE goods_id = ? AND status = 1 AND spec_id IS NOT NULL GROUP BY spec_id",
         [$goodsId]
     );
     $specStats = [];
@@ -124,6 +244,9 @@ if ($action === 'card_list') {
     }
     $statsMap['specs'] = $specStats;
 
+    // 已删订单数（选项卡计数用）
+    $statsMap['deleted_orders'] = count(virtualCardFindOrderIds($goodsId)['deleted']);
+
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode([
         'code' => 0,
@@ -131,6 +254,71 @@ if ($action === 'card_list') {
         'count' => $totalCount,
         'data' => $cards,
         'stats' => $statsMap,
+        'csrf_token' => Csrf::token(),
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// ================================================================
+// 已删订单列表（按订单聚合，供库存管理「已删订单」选项卡）
+// ================================================================
+if ($action === 'card_deleted_orders') {
+    $goodsId = (int)($_POST['goods_id'] ?? 0);
+    if (!$goodsId) {
+        Response::error('商品ID不能为空');
+    }
+    $virtualCardAssertGoodsAccess($goodsId);
+
+    $page = max(1, (int)($_POST['page'] ?? 1));
+    // 每页上限压到 20：本页的每个订单都要扫一遍它的卡密才算得出「卡密数」，
+    // 而单订单卡密数是万级，放大到 100 就是几百万行索引扫描，得不偿失。
+    $limit = min(20, max(10, (int)($_POST['limit'] ?? 20)));
+    $offset = ($page - 1) * $limit;
+
+    $prefix = Database::prefix();
+    // 订单ID 全部来自 virtualCardFindOrderIds()：只随订单数增长，不随卡密数增长。
+    // 订单行已被物理删除，删除时间无从查起（删单不写任何日志），只有卡密的 sold_at 还在。
+    $deleted = virtualCardFindOrderIds($goodsId)['deleted'];
+    rsort($deleted);                    // 订单ID 倒序 ≈ 越新的订单越靠前（不是删除顺序）
+    $totalCount = count($deleted);
+
+    // 只对当前页这 ≤20 个订单做聚合；不在本页的订单一个卡密都不碰
+    $pageIds = array_slice($deleted, $offset, $limit);
+    $aggById = [];
+    if ($pageIds) {
+        [$cond, $condParams] = virtualCardOrderIdCondition($pageIds);
+        foreach (Database::query(
+            "SELECT order_id,
+                    COUNT(*) AS card_count,
+                    MIN(sold_at) AS first_sold_at,
+                    MAX(sold_at) AS last_sold_at
+               FROM {$prefix}goods_virtual_card
+              WHERE goods_id = ? AND {$cond}
+              GROUP BY order_id",
+            array_merge([$goodsId], $condParams)
+        ) as $a) {
+            $aggById[(int) $a['order_id']] = $a;
+        }
+    }
+
+    $rows = [];
+    foreach ($pageIds as $i => $orderId) {
+        $a = $aggById[$orderId] ?? null;
+        $rows[] = [
+            'seq'           => $offset + $i + 1,
+            'order_id'      => $orderId,
+            'card_count'    => $a ? (int) $a['card_count'] : 0,
+            'first_sold_at' => $a['first_sold_at'] ?? null,
+            'last_sold_at'  => $a['last_sold_at'] ?? null,
+        ];
+    }
+
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'code' => 0,
+        'msg' => '',
+        'count' => $totalCount,
+        'data' => $rows,
         'csrf_token' => Csrf::token(),
     ], JSON_UNESCAPED_UNICODE);
     exit;
@@ -432,10 +620,11 @@ if ($action === 'card_export') {
         $params[] = $specId;
     }
     if ($orderState === 'missing' || $orderState === 'exists') {
-        $prefix = Database::prefix();
-        $conditions[] = 'order_id > 0 AND ' . ($orderState === 'missing' ? 'NOT EXISTS' : 'EXISTS')
-            . ' (SELECT 1 FROM `' . $prefix . 'order` o'
-            . ' WHERE o.id = `' . $prefix . 'goods_virtual_card`.`order_id`)';
+        $found = virtualCardFindOrderIds($goodsId);
+        $ids   = $orderState === 'missing' ? $found['deleted'] : $found['alive'];
+        [$cond, $condParams] = virtualCardOrderIdCondition($ids);
+        $conditions[] = $cond;
+        $params = array_merge($params, $condParams);
     }
 
     // 按订单导出：订单ID 一旦指定就只按「商品 + 订单ID」取数，把上面按列表筛选条件

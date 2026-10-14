@@ -160,6 +160,7 @@ if (!defined('EM_ROOT')) {
         <a class="em-tabs__item is-active" data-status="1"><i class="fa fa-cube"></i>未售<em class="em-tabs__count" id="tabAvailable"></em></a>
         <a class="em-tabs__item" data-status="0"><i class="fa fa-check-circle"></i>已售<em class="em-tabs__count" id="tabSold"></em></a>
         <a class="em-tabs__item" data-status="2"><i class="fa fa-flag"></i>标记售出<em class="em-tabs__count" id="tabMarked"></em></a>
+        <a class="em-tabs__item" data-status="deleted_orders" title="订单已被后台删除，卡密仍在库存里"><i class="fa fa-unlink"></i>已删订单<em class="em-tabs__count" id="tabDeletedOrders"></em></a>
     </div>
 
     <!-- 操作栏（自定义布局，不用 layui table toolbar） -->
@@ -227,6 +228,8 @@ var goodsId        = <?= $goodsId ?>;
 var specMap        = <?= json_encode($specMap, JSON_UNESCAPED_UNICODE) ?>;
 var currentTabStatus = '1';
 var currentTotal = 0;
+// 「已删订单」不是卡密状态，是另一个数据集（按订单聚合），单独走一个接口
+var DELETED_ORDER_TAB = 'deleted_orders';
 
 $(function(){
     'use strict';
@@ -274,7 +277,19 @@ $(function(){
             };
         };
 
+        function isDeletedOrderTab(){ return currentTabStatus === DELETED_ORDER_TAB; }
+
         function getTableCols(){
+            // 已删订单：按订单聚合，一行一个订单（勾选 / 操作列在这里没有意义）
+            if (isDeletedOrderTab()) {
+                return [[
+                    {field:'seq',           title:'序号',           width:70,     align:'center'},
+                    {field:'order_id',      title:'订单ID',         minWidth:140, align:'center', templet: orderTplFn},
+                    {field:'card_count',    title:'卡密数',         width:100,    align:'center'},
+                    {field:'first_sold_at', title:'售出时间(最早)', minWidth:150, align:'center', templet: makeTimeTpl('first_sold_at')},
+                    {field:'last_sold_at',  title:'售出时间(最晚)', minWidth:150, align:'center', templet: makeTimeTpl('last_sold_at')}
+                ]];
+            }
             var cols = [
                 {type:'checkbox', width:50},
                 {field:'seq', title:'序号', width:70, align:'center'},
@@ -332,6 +347,7 @@ $(function(){
             $('#tabAvailable').text(stats.available || '');
             $('#tabSold').text(stats.sold || '');
             $('#tabMarked').text(stats.marked || '');
+            $('#tabDeletedOrders').text(stats.deleted_orders || '');
             if (stats.specs) {
                 stats.specs.forEach(function(s){
                     var $item = $('#specStockStats .va-spec-item[data-spec-id="'+s.id+'"]');
@@ -369,17 +385,34 @@ $(function(){
         $('#cardSearchKeyword').on('keydown', function(e){ if(e.keyCode === 13) reloadTable(); });
 
         function reloadTable(){
-            table.reload('cardTableId', {
-                cols: getTableCols(),
-                where: {
+            var opts = { cols: getTableCols(), page: {curr: 1} };
+            if (isDeletedOrderTab()) {
+                // 已删订单是另一份数据（按订单聚合），搜索条件那几项对它不适用。
+                // 每页上限 20：本页每个订单都要扫一遍自己的卡密才算得出「卡密数」，
+                // 单订单是万级，放到 50/100 就是几百万行。前后端都夹住，否则 layui 页数会算错。
+                opts.url    = cardUrl('card_deleted_orders');
+                opts.where  = { goods_id: goodsId };
+                opts.limit  = 20;
+                opts.limits = [10, 20];
+            } else {
+                opts.url    = cardUrl('card_list');
+                opts.limit  = 10;
+                opts.limits = [10, 20, 50, 100];
+                opts.where = {
                     goods_id: goodsId,
                     status:   currentTabStatus,
                     keyword:  $('#cardSearchKeyword').val() || '',
                     spec_id:  $('#cardSearchSpec').val() || '',
                     order_state: $('#cardSearchOrderState').val() || ''
-                },
-                page: {curr: 1}
-            });
+                };
+            }
+            table.reload('cardTableId', opts);
+            setCardActionsVisible(!isDeletedOrderTab());
+        }
+
+        // 导入 / 导出 / 批量删除 / 清空库存都是针对卡密的，「已删订单」选项卡下藏起来
+        function setCardActionsVisible(visible){
+            $('#cardImportBtn, #cardExportBtn, #cardBatchDeleteBtn, #cardClearStockBtn').toggle(!!visible);
         }
 
         // 弹窗尺寸：大屏用首选 px，小屏按视口百分比自适应（库存管理在 iframe 内）
