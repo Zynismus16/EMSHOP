@@ -69,6 +69,17 @@ if ($action === 'card_list') {
         $params[] = $specIdFilter;
     }
 
+    // 订单关联状态筛选。订单被后台删除时卡密不跟着删（order_id 仍留着），
+    // 所以「订单已删除」= 有 order_id 但 em_order 里已查不到对应行。
+    // order_id > 0 同时把未售卡密（order_id 为 NULL）排除掉。
+    $orderState = (string)($_POST['order_state'] ?? '');
+    if ($orderState === 'missing' || $orderState === 'exists') {
+        $prefix = Database::prefix();
+        $conditions[] = 'order_id > 0 AND ' . ($orderState === 'missing' ? 'NOT EXISTS' : 'EXISTS')
+            . ' (SELECT 1 FROM `' . $prefix . 'order` o'
+            . ' WHERE o.id = `' . $prefix . 'goods_virtual_card`.`order_id`)';
+    }
+
     $whereSql = 'WHERE ' . implode(' AND ', $conditions);
 
     $total = Database::query(
@@ -393,10 +404,12 @@ if ($action === 'card_export') {
         exit('商品不存在');
     }
 
-    // 筛选口径与 card_list 一致：状态 / 关键字 / 规格
+    // 筛选口径与 card_list 一致：状态 / 关键字 / 规格 / 订单关联状态
     $status  = (string)($_GET['status'] ?? '');
     $keyword = trim((string)($_GET['keyword'] ?? ''));
     $specId  = (int)($_GET['spec_id'] ?? 0);
+    $orderState = (string)($_GET['order_state'] ?? '');
+    $orderIdFilter = max(0, (int)($_GET['order_id'] ?? 0));
     // 序号区间（1 起，与列表「序号」列对应；0 表示该端不限制）
     $from = max(0, (int)($_GET['from'] ?? 0));
     $to   = max(0, (int)($_GET['to'] ?? 0));
@@ -417,6 +430,22 @@ if ($action === 'card_export') {
     if ($specId > 0) {
         $conditions[] = 'spec_id = ?';
         $params[] = $specId;
+    }
+    if ($orderState === 'missing' || $orderState === 'exists') {
+        $prefix = Database::prefix();
+        $conditions[] = 'order_id > 0 AND ' . ($orderState === 'missing' ? 'NOT EXISTS' : 'EXISTS')
+            . ' (SELECT 1 FROM `' . $prefix . 'order` o'
+            . ' WHERE o.id = `' . $prefix . 'goods_virtual_card`.`order_id`)';
+    }
+
+    // 按订单导出：订单ID 一旦指定就只按「商品 + 订单ID」取数，把上面按列表筛选条件
+    // 拼出来的条件（状态 / 关键字 / 规格 / 订单关联状态）和序号区间全部丢掉。
+    // 否则默认停在「未售」选项卡上时，已售卡密（status=0）永远筛不出来。
+    if ($orderIdFilter > 0) {
+        $conditions = ['goods_id = ?', 'order_id = ?'];
+        $params = [$goodsId, $orderIdFilter];
+        $from = 0;
+        $to = 0;
     }
 
     $whereSql = 'WHERE ' . implode(' AND ', $conditions);

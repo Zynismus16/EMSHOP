@@ -1,7 +1,7 @@
 <?php
 /**
 Plugin Name: 虚拟卡密商品类型
-Version: 1.1.3
+Version: 1.1.5
 Plugin URL:
 Description: 虚拟商品插件，支持卡密 / 账号 / 邮箱等。既可一键发货（从卡密库自动提取），也可切换为人工发货（管理员手动填写）。
 Author: EMSHOP

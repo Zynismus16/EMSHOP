@@ -138,6 +138,14 @@ if (!defined('EM_ROOT')) {
                         <?php endforeach; ?>
                     </select>
                 </div>
+                <div class="em-filter__field">
+                    <label>订单状态</label>
+                    <select id="cardSearchOrderState">
+                        <option value="">全部订单</option>
+                        <option value="exists">订单未删除</option>
+                        <option value="missing">订单已删除</option>
+                    </select>
+                </div>
             </div>
             <div class="em-filter__actions">
                 <button type="button" class="em-btn em-reset-btn" id="cardResetBtn"><i class="fa fa-undo mr-5"></i>重置</button>
@@ -354,6 +362,7 @@ $(function(){
         $(document).on('click', '#cardResetBtn', function(){
             $('#cardSearchKeyword').val('');
             $('#cardSearchSpec').val('');
+            $('#cardSearchOrderState').val('');
             form.render('select');
             reloadTable();
         });
@@ -366,7 +375,8 @@ $(function(){
                     goods_id: goodsId,
                     status:   currentTabStatus,
                     keyword:  $('#cardSearchKeyword').val() || '',
-                    spec_id:  $('#cardSearchSpec').val() || ''
+                    spec_id:  $('#cardSearchSpec').val() || '',
+                    order_state: $('#cardSearchOrderState').val() || ''
                 },
                 page: {curr: 1}
             });
@@ -390,11 +400,14 @@ $(function(){
 
         $('#cardExportBtn').on('click', function () {
             var html = '<div style="padding:20px;">'
+                + '<div style="margin-bottom:14px;"><label style="display:block;font-size:13px;color:#6b7280;margin-bottom:4px;">订单ID</label>'
+                + '<input type="number" id="exportOrderId" min="1" class="layui-input" placeholder="留空 = 按下方序号区间导出"></div>'
                 + '<div style="margin-bottom:14px;"><label style="display:block;font-size:13px;color:#6b7280;margin-bottom:4px;">起始序号</label>'
                 + '<input type="number" id="exportFrom" min="1" class="layui-input" placeholder="留空 = 从第 1 个开始"></div>'
                 + '<div style="margin-bottom:14px;"><label style="display:block;font-size:13px;color:#6b7280;margin-bottom:4px;">结束序号</label>'
                 + '<input type="number" id="exportTo" min="1" class="layui-input" placeholder="留空 = 到最后一个"></div>'
                 + '<div style="font-size:12px;color:#9ca3af;">序号即列表「序号」列（当前共 ' + currentTotal + ' 条）；起始 / 结束都留空则导出全部。</div>'
+                + '<div style="font-size:12px;color:#9ca3af;margin-top:6px;">填了订单ID 就只导出该订单的卡密，状态 / 关键字 / 规格 / 序号区间一概忽略（订单已删除的卡密也能按订单ID取回）。</div>'
                 + '</div>';
             layer.open({
                 type: 1,
@@ -411,15 +424,23 @@ $(function(){
                         layer.msg('起始序号不能大于结束序号');
                         return;
                     }
+                    var orderId = Math.max(0, parseInt($('#exportOrderId').val(), 10) || 0);
                     var url = cardUrl('card_export');
                     url += '&goods_id=' + encodeURIComponent(goodsId);
-                    url += '&status=' + encodeURIComponent(currentTabStatus);
-                    var keyword = $('#cardSearchKeyword').val() || '';
-                    var specId = $('#cardSearchSpec').val() || '';
-                    if (keyword) url += '&keyword=' + encodeURIComponent(keyword);
-                    if (specId) url += '&spec_id=' + encodeURIComponent(specId);
-                    if (from > 0) url += '&from=' + from;
-                    if (to > 0) url += '&to=' + to;
+                    if (orderId > 0) {
+                        // 按订单导出：订单ID 一说就只认它，其余条件一概不带
+                        url += '&order_id=' + encodeURIComponent(orderId);
+                    } else {
+                        url += '&status=' + encodeURIComponent(currentTabStatus);
+                        var keyword = $('#cardSearchKeyword').val() || '';
+                        var specId = $('#cardSearchSpec').val() || '';
+                        var orderState = $('#cardSearchOrderState').val() || '';
+                        if (keyword) url += '&keyword=' + encodeURIComponent(keyword);
+                        if (specId) url += '&spec_id=' + encodeURIComponent(specId);
+                        if (orderState) url += '&order_state=' + encodeURIComponent(orderState);
+                        if (from > 0) url += '&from=' + from;
+                        if (to > 0) url += '&to=' + to;
+                    }
                     layer.close(idx);
                     // 后台返回 Content-Disposition: attachment，新窗口打开即触发下载
                     var a = document.createElement('a');
