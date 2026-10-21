@@ -10,9 +10,12 @@ require_once __DIR__ . '/global.php';
  * 负责渲染后台框架，并承载 Pjax 内容区。
  */
 if ((string) Input::get('action', '') === 'logout') {
+    // 先判定本次请求是否真的持有登录态：未登录者访问本地址时，跳转**不能**带 ?s= 密钥，
+    // 否则任何人一个 GET 就能从 Location 头里读走安全入口。
+    $wasLoggedIn = $auth->check();
     $auth->logout();
     // 退出后带上安全入口参数，方便再次登录；未登录误入后台时仍不带密钥
-    Response::redirect(adminSignUrl(true));
+    Response::redirect(adminSignUrl($wasLoggedIn));
 }
 
 // 清除缓存
