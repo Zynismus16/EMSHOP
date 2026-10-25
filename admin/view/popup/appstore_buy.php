@@ -289,7 +289,7 @@ $(function () {
         }
         renderApp(resp.data.app, resp.data.pay_methods || []);
     }).fail(function () {
-        renderState('fa-exclamation-triangle', '加载失败', '请检查网络或切换授权线路后重试', true);
+        renderState('fa-exclamation-triangle', '加载失败', '请检查网络后重试', true);
     });
 
     function renderApp(app, methods) {

@@ -29,7 +29,7 @@ if ($agentError !== null):
         <div class="agent-error__icon"><i class="fa fa-exclamation-triangle"></i></div>
         <div class="agent-error__title">暂时无法获取授权信息</div>
         <div class="agent-error__msg"><?= $esc($agentError) ?></div>
-        <div class="agent-error__hint">请点击后台右上角的线路菜单，切换到其他线路后重试。</div>
+        <div class="agent-error__hint">系统已自动尝试其他线路，请稍后重试。</div>
     </div>
 </div>
 <?php

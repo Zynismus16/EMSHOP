@@ -45,7 +45,7 @@ final class InstallReporter
     /**
      * 上报接口的路径（服务端那边由 `OpenInstallController::report()` 接）。
      * 服务端地址来自 `EM_LICENSE_SERVER_URL`（正常运行时由 init.php 定义）
-     * 或 `LicenseClient::OFFICIAL_BASE_URL`（安装时 —— 那时候 init.php 还没跑）。
+     * 或 `LicenseClient::officialLines()` 的第一条（安装时 —— 那时候 init.php 还没跑）。
      */
     private const PATH = 'api/open/v1/em/install-report';
 
@@ -211,11 +211,15 @@ final class InstallReporter
     /** 上报地址。服务端地址只认常量，不读 config.php（理由同 LicenseClient::serverUrl()） */
     private static function endpoint(): string
     {
-        $base = defined('EM_LICENSE_SERVER_URL')
-            ? (string) EM_LICENSE_SERVER_URL
-            : (class_exists('LicenseClient') ? (string) LicenseClient::OFFICIAL_BASE_URL : '');
+        // 正常运行时 init.php 已 define（当前选中线路）；安装时还没有 init.php，
+        // 直接取官方线路常量的第一条 —— 只碰常量，不读 Config（安装环境没有数据库）。
+        $base = defined('EM_LICENSE_SERVER_URL') ? trim((string) EM_LICENSE_SERVER_URL) : '';
+        if ($base === '' && class_exists('LicenseClient')) {
+            $lines = LicenseClient::officialLines();
+            $base  = trim((string) ($lines[0]['url'] ?? ''));
+        }
 
-        if (trim($base) === '') {
+        if ($base === '') {
             return '';
         }
 

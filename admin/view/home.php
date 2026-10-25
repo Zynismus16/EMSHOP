@@ -353,19 +353,7 @@ $__runModeDesc   = $__deliveryAsync
         </div>
         <?php endforeach; ?>
 
-        <?php
-            // 线路状态卡：展示当前启用的授权服务线路名；延迟由前端 JS 异步 ping 回填
-            $__curLineName = '官方线路';
-            try {
-                $__lines   = LicenseService::getAllLines();
-                $__lineIdx = LicenseService::currentLineIndex();
-                $__curLineName = (string) ($__lines[$__lineIdx]['name'] ?? '官方线路');
-            } catch (Throwable $e) {
-                // 读配置失败不影响卡片渲染
-            }
-        ?>
-
-        <!-- 附加操作卡：授权码 / 下载安装包 / 线路状态（均为官方来源；任务服务在系统版本后） -->
+        <!-- 附加操作卡：授权码 / 下载安装包（均为官方来源；任务服务在系统版本后） -->
         <div class="dash-metric dash-metric--action" style="--m-color: #10b981; --m-soft: #ecfdf5;">
             <div class="dash-metric__head">
                 <span class="dash-metric__icon"><i class="fa fa-key"></i></span>
@@ -403,31 +391,6 @@ $__runModeDesc   = $__deliveryAsync
                 <button type="button" class="dash-version-btn" id="dashGetDownloadBtn">
                     <i class="fa fa-download"></i> 获取
                 </button>
-            </div>
-        </div>
-
-        <div class="dash-metric dash-metric--action" style="--m-color: #0ea5e9; --m-soft: #ecfeff;">
-            <div class="dash-metric__head">
-                <span class="dash-metric__icon"><i class="fa fa-signal"></i></span>
-                <span class="dash-metric__label">线路状态</span>
-                <span class="dash-metric__official-tag">官方</span>
-            </div>
-            <div class="dash-metric__main">
-                <div class="dash-metric__value-row">
-                    <span class="dash-metric__today-value" id="dashLineName"><?= $esc($__curLineName) ?></span>
-                </div>
-                <div class="dash-metric__yesterday">线路用于程序及模板插件的更新服务</div>
-            </div>
-            <div class="dash-metric__month">
-                <span class="dash-metric__month-label">延迟</span>
-                <span class="dash-metric__month-value">
-                    <span id="dashLineLatency" class="dash-latency">
-                        <i class="fa fa-spinner fa-spin" style="margin-right:4px;"></i>--
-                    </span>
-                    <a href="javascript:void(0);" id="dashRefreshLatency" class="dash-latency-refresh" title="刷新延迟">
-                        <i class="fa fa-refresh"></i>
-                    </a>
-                </span>
             </div>
         </div>
 
@@ -780,7 +743,7 @@ $__runModeDesc   = $__deliveryAsync
 }
 .dash-version-btn--alert:hover { background: linear-gradient(135deg, #e11d48, #be123c); }
 
-/* ---------- 附加操作卡：授权码 / 下载安装包 / 线路状态 ---------- */
+/* ---------- 附加操作卡：授权码 / 下载安装包 ---------- */
 /* 右上角"官方"标签 */
 .dash-metric__official-tag {
     font-size: 11px; font-weight: 600;
@@ -789,22 +752,6 @@ $__runModeDesc   = $__deliveryAsync
     letter-spacing: 0.3px; flex-shrink: 0;
     box-shadow: inset 0 0 0 1px rgba(79, 70, 229, 0.15);
 }
-/* 线路状态延迟数值：随延迟区间显示不同颜色（JS 动态切换 class） */
-.dash-latency { font-weight: 600; color: #6b7280; }
-.dash-latency--ok   { color: #10b981; }
-.dash-latency--warn { color: #f59e0b; }
-.dash-latency--bad  { color: #ef4444; }
-/* 刷新图标：hover 轻转；loading 时持续旋转 */
-.dash-latency-refresh {
-    margin-left: 6px; color: #9ca3af;
-    display: inline-flex; align-items: center;
-    font-size: 12px; text-decoration: none;
-    transition: color 0.15s ease, transform 0.3s ease;
-}
-.dash-latency-refresh:hover { color: #0ea5e9; transform: rotate(60deg); }
-.dash-latency-refresh.is-loading i { animation: dashRefreshSpin 1s linear infinite; }
-@keyframes dashRefreshSpin { to { transform: rotate(360deg); } }
-
 /* 下载源选择弹层（多源时弹出） */
 .dash-dl-wrap { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
 .dash-dl-item {
@@ -832,6 +779,19 @@ $__runModeDesc   = $__deliveryAsync
 }
 .dash-dl-arrow { color: #d1d5db; font-size: 12px; flex-shrink: 0; }
 .dash-dl-item:hover .dash-dl-arrow { color: #f59e0b; }
+/* 授权码卡复用同一套列表结构，配色跟随卡片主色（绿） */
+.dash-dl-item--license:hover { border-color: #10b981; }
+.dash-dl-item--license .dash-dl-ico { background: #ecfdf5; color: #10b981; }
+.dash-dl-item--license:hover .dash-dl-arrow { color: #10b981; }
+/* 兜底提示：身份标识没匹配到代理商时，页面顶部提示当前是官方通用配置 */
+.dash-dl-notice {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 12px;
+    font-size: 12px; color: #92400e;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+}
 
 /* 公告 / 广告空态 */
 .dash-announce__empty {
@@ -841,6 +801,11 @@ $__runModeDesc   = $__deliveryAsync
     font-size: 13px;
 }
 .dash-announce__empty i { font-size: 24px; display: block; margin-bottom: 6px; color: #d1d5db; }
+/* 加载失败态：整块可点，点击重拉 admin_index_data */
+.dash-announce__empty--retry { cursor: pointer; transition: color 0.15s ease; }
+.dash-announce__empty--retry:hover { color: #6366f1; }
+.dash-announce__empty--retry i { transition: color 0.15s ease; }
+.dash-announce__empty--retry:hover i { color: #6366f1; }
 
 /* 公告第一条：代理商联系方式 */
 .dash-announce__contact { cursor: default; }
@@ -1481,7 +1446,42 @@ $(function () {
     // 异步加载首页中心服务数据（代理商联系方式 / 公告 / 广告 / 版本更新）
     // 保存最新一次响应，供"检查更新"按钮读取
     var __dashIndexData = null;
+    var __dashIndexLoading = false;
+    var __dashIndexXhr = null;
     var __dashLicenseActivated = <?= $__licenseActivated ? 'true' : 'false' ?>;
+
+    // 公告 / 推广的加载骨架（重试时恢复成和首屏一致的占位）
+    var DASH_SKELETON = (function () {
+        var one = '<div class="dash-skeleton__item"><div class="dash-skeleton__tag"></div><div class="dash-skeleton__line"></div></div>';
+        return one + one + one;
+    })();
+
+    // admin_index_data 上游失败时 HTTP 仍是 200，但会带 error、业务字段全是空数组。
+    // 这种状态必须按「加载失败」处理，否则卡片会误显示"暂无公告 / 暂无推广 / 暂无链接"。
+    function dashDataFailed(data) {
+        return !data || String(data.error || '') !== '';
+    }
+    function dashRetryHtml() {
+        return '<div class="dash-announce__empty dash-announce__empty--retry" title="点击重新获取">' +
+               '<i class="fa fa-refresh"></i>加载失败，点击重试</div>';
+    }
+    // 数据没拿到（首次还没返回，或上次上游失败）时先重拉一次，成功后再执行 onReady。
+    // 等待期间只显示 loading，不弹提示；请求结束（无论成败）再关掉 loading。
+    function dashEnsureIndexData(onReady) {
+        if (!dashDataFailed(__dashIndexData)) {
+            onReady();
+            return;
+        }
+        var loadIdx = layui.layer.load(2);
+        loadDashIndex().always(function () {
+            layui.layer.close(loadIdx);
+            if (dashDataFailed(__dashIndexData)) {
+                layui.layer.msg('获取失败，请稍后再试');
+                return;
+            }
+            onReady();
+        });
+    }
 
     // FPM 模式是正常可用的模式（同步发货），不再自动弹窗打扰；想了解区别点“查看详细”。
     $('#dashServerDetailBtn').on('click', function () {
@@ -1546,6 +1546,10 @@ $(function () {
     }
     function renderNoticeList(data) {
         var $list = $('#dashNoticeList');
+        if (dashDataFailed(data)) {
+            $list.html(dashRetryHtml());
+            return;
+        }
         var html = '';
         var c = data.contact || {};
         var hasContact = !!(c.qq_service || c.wechat_service || c.qq_group || c.tg_service || c.tg_group_url || c.wechat_qr);
@@ -1592,9 +1596,14 @@ $(function () {
         }
         $list.html(html);
     }
-    function renderAdList(ads) {
+    function renderAdList(data) {
         var $list = $('#dashAdList');
-        if (!ads || !ads.length) {
+        if (dashDataFailed(data)) {
+            $list.html(dashRetryHtml());
+            return;
+        }
+        var ads = data.ad_slots || [];
+        if (!ads.length) {
             $list.html('<div class="dash-announce__empty"><i class="fa fa-inbox"></i> 暂无推广</div>');
             return;
         }
@@ -1625,58 +1634,48 @@ $(function () {
         $('#dashVersionLabel').html('<i class="fa fa-exclamation-circle" style="color:#9ca3af;margin-right:4px;"></i>检测失败');
         $('#dashCheckUpdate').prop('disabled', false);
     }
-    // 线路延迟：直接用 admin_index_data 这次请求自身的往返耗时（不再单独 ping 接口）
-    function renderLatency(ms) {
-        var $latency = $('#dashLineLatency');
-        if (!$latency.length) return;
-        $latency.removeClass('dash-latency--ok dash-latency--warn dash-latency--bad');
-        ms = parseInt(ms, 10);
-        if (isNaN(ms) || ms < 0) {
-            $latency.addClass('dash-latency--bad').text('无法连接');
-            return;
-        }
-        // 分档配色：<150ms 绿 / 150-500ms 橙 / ≥500ms 红
-        var cls = ms < 150 ? 'dash-latency--ok' : (ms < 500 ? 'dash-latency--warn' : 'dash-latency--bad');
-        $latency.addClass(cls).text(ms + ' ms');
+    function renderDashFail() {
+        __dashIndexData = null;
+        renderVersionError();
+        $('#dashNoticeList').html(dashRetryHtml());
+        $('#dashAdList').html(dashRetryHtml());
     }
-
+    // 返回 jqXHR，调用方（授权码 / 下载卡片）可在失败后等它重试完再决定弹不弹
     function loadDashIndex() {
-        var $refresh = $('#dashRefreshLatency');
-        $refresh.addClass('is-loading');
-        $.ajax({
+        if (__dashIndexLoading) return __dashIndexXhr;
+        __dashIndexLoading = true;
+        __dashIndexXhr = $.ajax({
             url: '/admin/home.php',
             method: 'GET',
             data: { _action: 'admin_index_data', _t: Date.now() },
             dataType: 'json',
-            // 要给后端的重试留足预算（baseData 最多 3 次 * 8s + 退避 ≈ 25s），
-            // 否则线路抖动时前端先断，后端还在跑，等于白重试
+            // 后端只请求当前线路（不自动换线），单次超时 8s；这里留足余量
             timeout: 40000
         }).done(function (resp) {
-            if (!resp || resp.code !== 200 || !resp.data) {
-                renderVersionError();
-                renderLatency(-1);
-                $('#dashNoticeList').html('<div class="dash-announce__empty"><i class="fa fa-inbox"></i> 加载失败</div>');
-                $('#dashAdList').html('<div class="dash-announce__empty"><i class="fa fa-inbox"></i> 加载失败</div>');
+            // 上游失败时 HTTP 仍是 200，但带 error、update 是空壳 —— 必须按失败处理，
+            // 否则版本卡会误显示「当前已是最新版本」。
+            if (!resp || resp.code !== 200 || !resp.data || dashDataFailed(resp.data)) {
+                renderDashFail();
                 return;
             }
             __dashIndexData = resp.data;
             renderNoticeList(resp.data);
-            renderAdList(resp.data.ad_slots);
+            renderAdList(resp.data);
             renderVersion(resp.data);
-            renderLatency(resp.data.latency_ms);
         }).fail(function () {
-            renderVersionError();
-            renderLatency(-1);
-            $('#dashNoticeList').html('<div class="dash-announce__empty"><i class="fa fa-inbox"></i> 加载失败</div>');
-            $('#dashAdList').html('<div class="dash-announce__empty"><i class="fa fa-inbox"></i> 加载失败</div>');
+            renderDashFail();
         }).always(function () {
-            $refresh.removeClass('is-loading');
+            __dashIndexLoading = false;
         });
+        return __dashIndexXhr;
     }
     loadDashIndex();
 
-    // 「刷新延迟」= 重拉一次首页数据（延迟与公告/广告/版本一起刷新，重渲染是幂等的）
-    $('#dashRefreshLatency').on('click', loadDashIndex);
+    // 公告 / 推广的"加载失败，点击重试"：整体重拉一次
+    $(document).on('click.dashHome', '.dash-announce__empty--retry', function () {
+        $('#dashNoticeList, #dashAdList').html(DASH_SKELETON);
+        loadDashIndex();
+    });
 
     // 系统版本卡片：有新版本 → 直接进升级流程（新接口不再提供逐版本更新日志）；
     // 否则触发一次重新检测
@@ -1963,31 +1962,47 @@ $(function () {
         });
     });
 
-    // ========== 附加操作卡（授权码 / 下载 / 线路）==========
-    // 授权码、下载安装包两张卡：均通过代理商联系方式弹窗获取
-    function dashOpenAgentPopup(title) {
-        if (typeof layui === 'undefined' || !layui.layer) return;
+    // ========== 附加操作卡（授权码 / 下载）==========
+    // 授权码卡：正常情况直接用首页初始化时已拉到的 buy_links 渲染，
+    // 不再打开 /admin/license.php?_popup=agent —— 那个 iframe 会再向上游请求一次 base-data；
+    // 上次请求失败则点「获取」时重新请求接口，成功后再弹。
+    function openBuyLinksPopup() {
+        var links = __dashIndexData.buy_links || [];
+        var content;
+        if (!links.length) {
+            content = '<div class="dash-announce__empty"><i class="fa fa-inbox"></i>暂无购买渠道</div>';
+        } else {
+            var notice = __dashIndexData.used_fallback
+                ? '<div class="dash-dl-notice"><i class="fa fa-info-circle"></i> 当前身份标识未匹配到代理商，以下为官方通用配置</div>'
+                : '';
+            content = '<div class="dash-dl-wrap">' + notice + links.map(function (u) {
+                return '<a href="' + escapeHtml(u.url) + '" target="_blank" class="dash-dl-item dash-dl-item--license">' +
+                       '<span class="dash-dl-ico"><i class="fa fa-shopping-cart"></i></span>' +
+                       '<div class="dash-dl-body">' +
+                           '<div class="dash-dl-name">' + escapeHtml(u.name || u.url) + '</div>' +
+                           '<div class="dash-dl-url">' + escapeHtml(u.url) + '</div>' +
+                       '</div>' +
+                       '<i class="fa fa-arrow-right dash-dl-arrow"></i></a>';
+            }).join('') + '</div>';
+        }
         layui.layer.open({
-            type: 2,
-            title: title,
+            type: 1,
+            title: '获取正版授权码',
             skin: 'admin-modal',
-            maxmin: false,
-            area: [window.innerWidth >= 640 ? '580px' : '94%', window.innerHeight >= 640 ? '580px' : '88%'],
+            area: [window.innerWidth >= 640 ? '460px' : '94%', 'auto'],
             shadeClose: true,
-            content: '/admin/license.php?_popup=agent'
+            content: content
         });
     }
-    $('#dashGetLicenseBtn').on('click', function () { dashOpenAgentPopup('获取正版授权码'); });
+    $('#dashGetLicenseBtn').on('click', function () {
+        if (typeof layui === 'undefined' || !layui.layer) return;
+        dashEnsureIndexData(openBuyLinksPopup);
+    });
 
     
 
     // 下载安装包：从 admin_index_data 返回的 download_links 取下载源，始终用弹层展示，由用户点具体条目后再打开
-    $('#dashGetDownloadBtn').on('click', function () {
-        if (typeof layui === 'undefined' || !layui.layer) return;
-        if (!__dashIndexData) {
-            layui.layer.msg('下载信息加载中，请稍候…');
-            return;
-        }
+    function openDownloadPopup() {
         var urls = __dashIndexData.download_links || [];
         if (!urls.length) {
             layui.layer.msg('暂未提供下载链接，请联系客服获取');
@@ -2010,6 +2025,10 @@ $(function () {
             shadeClose: true,
             content: '<div class="dash-dl-wrap">' + items + '</div>'
         });
+    }
+    $('#dashGetDownloadBtn').on('click', function () {
+        if (typeof layui === 'undefined' || !layui.layer) return;
+        dashEnsureIndexData(openDownloadPopup);
     });
 
     // 销售趋势折线图：初始化空图表，再用 AJAX 拉数据 + 按日期范围切换

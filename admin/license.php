@@ -85,6 +85,14 @@ if (Request::isPost()) {
                 ]);
                 break;
 
+            // 只读：后台线路列表展开时并发测一遍各线路延迟（不轮换 CSRF）
+            case 'line_ping':
+                Response::success('', [
+                    'lines'         => LicenseClient::measureLatency(),
+                    'current_index' => LicenseService::currentLineIndex(),
+                ]);
+                break;
+
             default:
                 Response::error('未知操作');
         }

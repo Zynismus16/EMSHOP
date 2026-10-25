@@ -67,10 +67,18 @@ $csrfToken = Csrf::token();
         transition: opacity 0.15s ease, transform 0.15s ease, visibility 0s;
     }
     .admin-line-switch__title {
+        display: flex; align-items: center; gap: 5px;
         font-size: 11px; color: #9ca3af;
         text-transform: uppercase; letter-spacing: 0.6px;
         padding: 8px 12px 6px;
     }
+    /* 标题旁的「查看解释」图标：说明气泡由 layui 的 layer.tips 负责 */
+    .admin-line-switch__help {
+        display: inline-flex; align-items: center;
+        color: #b3b9c4; cursor: help;
+        letter-spacing: 0; text-transform: none;
+    }
+    .admin-line-switch__help:hover { color: #6366f1; }
     .admin-line-switch__item {
         display: flex; align-items: center; gap: 10px;
         width: 100%; padding: 10px 12px;
@@ -80,15 +88,23 @@ $csrfToken = Csrf::token();
     }
     .admin-line-switch__item:hover { background: #f8fafc; }
     .admin-line-switch__item.is-current { background: #f5f3ff; }
-    .admin-line-switch__item > i.fa-circle-o {
-        font-size: 10px; color: #cbd5e1; flex-shrink: 0;
+    .admin-line-switch__item > i.fa-circle-o,
+    .admin-line-switch__item > i.fa-check-circle {
+        font-size: 12px; color: #cbd5e1; flex-shrink: 0;
     }
-    .admin-line-switch__item.is-current > i.fa-circle-o { color: #6366f1; }
+    .admin-line-switch__item.is-current > i.fa-check-circle { color: #6366f1; }
     .admin-line-switch__body { flex: 1; min-width: 0; }
     .admin-line-switch__item-name {
         font-size: 13px; font-weight: 500; color: #111827;
     }
-    .admin-line-switch__check { color: #6366f1; font-size: 13px; }
+    .admin-line-switch__ms {
+        margin-left: auto; flex-shrink: 0;
+        font-size: 11px; color: #9ca3af;
+        font-variant-numeric: tabular-nums;
+    }
+    .admin-line-switch__ms.is-ok   { color: #10b981; }
+    .admin-line-switch__ms.is-warn { color: #f59e0b; }
+    .admin-line-switch__ms.is-bad  { color: #ef4444; }
     @media (max-width: 600px) {
         .admin-line-switch__dropdown { right: -143px; min-width: 260px; }
     }
@@ -292,8 +308,8 @@ $csrfToken = Csrf::token();
                     // 放在 toolbar 而非单页，原因：
                     //   - 后台首页 / license 页都会请求中心服务；线路不通时任何页都需要能切换
                     //   - PJAX 不会重载 toolbar，切换后状态在所有页面一致
-                    // 当前服务端地址固定在 init.php 的 EM_LICENSE_SERVER_URL，只有一条线路，
-                    // 下面的 count > 1 判定会让这块永不渲染；留着是为了将来再加线路时能直接用
+                    // 线路列表来自 LicenseClient（多线路）。请求只会走当前选中的线路，
+                    // 线路不通由用户在这里手动切换；只有一条线路时不渲染。
                     $__lines = [];
                     $__lineIdx = 0;
                     try {
@@ -311,16 +327,17 @@ $csrfToken = Csrf::token();
                             <i class="fa fa-angle-down"></i>
                         </button>
                         <div class="admin-line-switch__dropdown" id="adminLineDropdown">
-                            <div class="admin-line-switch__title">切换官方服务线路</div>
+                            <div class="admin-line-switch__title">
+                                切换官方服务线路
+                                <i class="fa fa-question-circle admin-line-switch__help" aria-label="查看解释"></i>
+                            </div>
                             <?php foreach ($__lines as $__i => $__ln): ?>
                             <button type="button" class="admin-line-switch__item <?= $__i === $__lineIdx ? 'is-current' : '' ?>" data-idx="<?= $__i ?>">
-                                <i class="fa fa-circle-o"></i>
+                                <i class="fa <?= $__i === $__lineIdx ? 'fa-check-circle' : 'fa-circle-o' ?>"></i>
                                 <div class="admin-line-switch__body">
                                     <div class="admin-line-switch__item-name"><?= htmlspecialchars((string) $__ln['name'], ENT_QUOTES, 'UTF-8') ?></div>
                                 </div>
-                                <?php if ($__i === $__lineIdx): ?>
-                                <i class="fa fa-check admin-line-switch__check"></i>
-                                <?php endif; ?>
+                                <span class="admin-line-switch__ms">--</span>
                             </button>
                             <?php endforeach; ?>
                         </div>
@@ -391,9 +408,70 @@ $(function () {
         // ========== 授权服务器线路切换（toolbar 全局）==========
         var $lineWrap = $('#adminLineSwitch');
         if ($lineWrap.length) {
+            // 标题旁「查看解释」：用 layui 自带的 layer.tips，悬停显示、移开关闭
+            var __lineTipIdx = null;
+            $lineWrap.find('.admin-line-switch__help').on('mouseenter', function () {
+                __lineTipIdx = layer.tips(
+                    '官方服务线路用于程序版本 / 模板 / 插件的安装与更新，如官方服务不可用，请切换其他线路后重试。',
+                    this,
+                    { tips: [3, '#1f2937'], time: 0, maxWidth: 240 }
+                );
+            }).on('mouseleave', function () {
+                if (__lineTipIdx !== null) {
+                    layer.close(__lineTipIdx);
+                    __lineTipIdx = null;
+                }
+            });
+
+            // 线路延迟：展开下拉时并发测一遍（服务端对每条线路发一个 HEAD），
+            // 结果缓存 60 秒，避免每次展开都打一遍官方服务器
+            var __lineLatencyAt = 0, __linePinging = false;
+            function renderLineLatency(lines) {
+                $('#adminLineDropdown .admin-line-switch__item').each(function () {
+                    var idx = parseInt($(this).data('idx'), 10);
+                    var $ms = $(this).find('.admin-line-switch__ms');
+                    var row = null;
+                    for (var i = 0; i < lines.length; i++) {
+                        if (parseInt(lines[i].index, 10) === idx) { row = lines[i]; break; }
+                    }
+                    $ms.removeClass('is-ok is-warn is-bad');
+                    if (!row || row.ms === null || row.ms < 0) {
+                        $ms.addClass('is-bad').text('超时');
+                        return;
+                    }
+                    var ms = parseInt(row.ms, 10);
+                    // 分档配色与首页线路卡一致：<150ms 绿 / 150-500ms 橙 / ≥500ms 红
+                    $ms.addClass(ms < 150 ? 'is-ok' : (ms < 500 ? 'is-warn' : 'is-bad')).text(ms + ' ms');
+                });
+            }
+            function loadLineLatency() {
+                if (__linePinging || Date.now() - __lineLatencyAt < 60000) return;
+                __linePinging = true;
+                $('#adminLineDropdown .admin-line-switch__ms').removeClass('is-ok is-warn is-bad').text('…');
+                $.ajax({
+                    url: '/admin/license.php',
+                    type: 'POST',
+                    dataType: 'json',
+                    data: { _action: 'line_ping', csrf_token: window.adminCsrfToken },
+                    timeout: 8000
+                }).done(function (res) {
+                    if (res && res.code === 200 && res.data && res.data.lines) {
+                        __lineLatencyAt = Date.now();
+                        renderLineLatency(res.data.lines);
+                    } else {
+                        $('#adminLineDropdown .admin-line-switch__ms').text('--');
+                    }
+                }).fail(function () {
+                    $('#adminLineDropdown .admin-line-switch__ms').text('--');
+                }).always(function () {
+                    __linePinging = false;
+                });
+            }
             $lineWrap.find('.admin-line-switch__trigger').on('click', function (e) {
                 e.stopPropagation();
-                $('#adminLineDropdown').toggleClass('is-open');
+                var $dropdown = $('#adminLineDropdown');
+                $dropdown.toggleClass('is-open');
+                if ($dropdown.hasClass('is-open')) loadLineLatency();
             });
             $(document).on('click', function (e) {
                 if (!$(e.target).closest('#adminLineSwitch').length) {
@@ -418,8 +496,8 @@ $(function () {
                             window.adminCsrfToken = res.data.csrf_token;
                         }
                         $('#adminLineName').text((res.data && res.data.current_name) || '');
-                        $('#adminLineDropdown .admin-line-switch__item').removeClass('is-current').find('.admin-line-switch__check').remove();
-                        $item.addClass('is-current').append('<i class="fa fa-check admin-line-switch__check"></i>');
+                        $('#adminLineDropdown .admin-line-switch__item').removeClass('is-current').children('i.fa').first().removeClass('fa-check-circle').addClass('fa-circle-o');
+                        $item.addClass('is-current').children('i.fa').first().removeClass('fa-circle-o').addClass('fa-check-circle');
                         $('#adminLineDropdown').removeClass('is-open');
                         layer.msg(res.msg || '已切换线路');
                         // 切换线路后刷新页面，让依赖当前线路的首页数据（代理商、公告、延迟等）重新拉取

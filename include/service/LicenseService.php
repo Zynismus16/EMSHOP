@@ -501,9 +501,8 @@ final class LicenseService
     }
 
     // ---------- 线路配置 ----------
-    // 服务端地址固定在 init.php 的 EM_LICENSE_SERVER_URL，只有一条线路。
-    // 这里保留列表 / 索引 / 切换这套接口只是为了兼容既有调用方，
-    // 单线路下索引恒为 0，切换入口在前端也不会渲染（count($lines) > 1 才显示）。
+    // 线路列表与当前索引都由 LicenseClient 提供（多线路）。请求不做自动换线：
+    // 只走这里记的当前线路，用户在后台手动切换。
 
     /** 所有可用的授权服务器线路。 */
     public static function getAllLines(): array
@@ -511,14 +510,10 @@ final class LicenseService
         return LicenseClient::lines();
     }
 
-    /** 当前生效的线路索引（默认 0）。 */
+    /** 当前线路索引（越界回落 0）。 */
     public static function currentLineIndex(): int
     {
-        $lines = self::getAllLines();
-        if ($lines === []) return 0;
-        $idx = (int) (Config::get('license_line_index') ?? 0);
-        if ($idx < 0 || $idx >= count($lines)) $idx = 0;
-        return $idx;
+        return LicenseClient::currentLineIndex();
     }
 
     /** 切换当前线路。 @throws RuntimeException 索引越界 */

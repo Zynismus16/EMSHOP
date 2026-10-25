@@ -8,7 +8,8 @@ require __DIR__ . '/global.php';
  * 后台控制台首页。 
  *
  * 流程：
- *   - 鉴权 + 授权状态核对（revalidateCurrent）
+ *   - 鉴权；授权状态核对（revalidateCurrent）改由首页的 admin_index_data 请求异步触发，
+ *     不再阻塞首屏渲染
  *   - 渲染由 view/home.php 自查统计数据（解耦 controller，无论 PJAX 还是默认入口都能直接渲染）
  *
  * 入口说明：
@@ -31,10 +32,20 @@ if ($siteUrl === '') {
  * AJAX：拉取首页需要的官方服务数据（授权状态 / 版本 / 公告 / 广告位 / 代理商联系方式）
  * 走独立 action 是为了页面不阻塞 —— 页面先渲染框架，JS 再异步拉这块
  *
- * 顺便把这次请求自身的往返耗时当「线路延迟」返回（latency_ms），
- * 前端线路状态卡直接用它，不再单独 ping 一个接口。
+ * 顺便返回这次上游请求的往返耗时（latency_ms）。
  */
 if ((string) Input::get('_action', '') === 'admin_index_data') {
+    // 先释放 session 文件锁：本请求要等上游（最坏 线路数 × 8s），
+    // 不解锁的话同页面的 trend 请求会一直排队，整个首页显得很卡。
+    // 本分支之后不再写 session，释放是安全的。
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
+
+    // 授权状态核对：原先在页面渲染前同步执行，上游慢时首屏也要一起等；
+    // 挪到这里异步做，首屏先出来，核对结果晚一步生效。
+    LicenseService::revalidateCurrent();
+
     // 每次都实时拉（不做本地缓存；接口不通则返回失败态，latency_ms = -1）
     $start = microtime(true);
     $data  = null;
@@ -81,6 +92,11 @@ if ((string) Input::get('_action', '') === 'admin_index_data') {
  *   6m / year / 12m           —— 按月聚合
  */
 if ((string) Input::get('_action', '') === 'trend') {
+    // 只读本地库：先释放 session 锁，不跟同一页面的首页数据请求互相排队
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
+
     $range = (string) Input::get('range', '7d');
     $prefix = Database::prefix();
     $orderTable = $prefix . 'order';
@@ -263,9 +279,6 @@ if ((string) Input::get('_popup', '') === 'server_restart') {
     include __DIR__ . '/view/popup/server_restart.php';
     return;
 }
-
-// 进入后台首页时跟服务端核对一次授权状态
-LicenseService::revalidateCurrent();
 
 if (Request::isPjax()) {
     echo '<div id="adminContent" class="admin-content">';

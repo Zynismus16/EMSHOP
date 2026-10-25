@@ -6,7 +6,8 @@ declare(strict_types=1);
  * 授权服务器 HTTP 客户端。
  *
  * 职责：把对授权服务器的所有网络调用集中在一处，业务层（LicenseService）只拿结构化结果。
- * 服务端地址固定为 init.php 里定义的 EM_LICENSE_SERVER_URL（单线路，不读 config.php）。
+ * 服务端地址来自本类的线路常量（多线路，不读 config.php）：每次请求**只走用户当前选中的那条**，
+ * 不做自动换线、不重试；线路不通直接抛异常，由用户在后台手动切换线路。
  *
  * 约定（详见 a 系统文档/应用商店方案.md §8）：
  *   所有响应 JSON 统一格式：{ ok: bool, data?: ..., code?: string, msg?: string }
@@ -19,16 +20,42 @@ final class LicenseClient
 {
     /**
      * 官方线路地址。**这里是全站唯一的定义处** —— `init.php` 用它定义
-     * `EM_LICENSE_SERVER_URL`，安装程序（`InstallReporter`）在 `init.php`
-     * 还没加载时直接读它，两边不会各写一份。
+     * `EM_LICENSE_SERVER_URL`；安装程序（`InstallReporter`）在 `init.php`
+     * 还没加载时直接读这份线路常量，两边不会各写一份。
+     *
+     * 形状是 `[{url, name}]`：url 带不带尾斜杠都行（内部会补），name 只用于后台展示。
+     * 顺序只决定后台列表的展示顺序；实际请求只走当前选中索引那一条。
      *
      * 为什么写死在代码里而不是配置文件里：地址必须**跟着程序版本走**。
      * 放 config.php 的话，老站升级后残留的旧地址会继续生效（见 `serverUrl()`）。
      */
-    public const OFFICIAL_BASE_URL = 'https://bs.ihehe.me/';
+    // public const OFFICIAL_BASE_URL = 'https://bs.ihehe.me/';
+
+    public const OFFICIAL_BASE_URL = [
+        [
+            'url' => 'https://bs.ihehe.me/',
+            'name' => '香港优化;三网混合',
+        ],
+        [
+            'url' => 'https://bs2.ihehe.me/',
+            'name' => '香港极速;三网直连',
+        ]
+    ];
+
 
     /** 本地联调用的线路（后台「开发模式」开启时走它，见 init.php） */
-    public const DEV_BASE_URL = 'http://127.0.0.1:3000/';
+    // public const DEV_BASE_URL = 'http://127.0.0.1:3000/';
+
+    public const DEV_BASE_URL = [
+        [
+            'url' => 'http://127.0.0.1:8000/',
+            'name' => '香港优化;三网混合;开发模式',
+        ],
+        [
+            'url' => 'http://127.0.0.1:8801/',
+            'name' => '香港极速;三网直连;开发模式',
+        ],
+    ];
 
     /**
      * 授权激活：把激活码绑到域名上（POST /api/open/v1/em/license/bind）。
@@ -45,10 +72,8 @@ final class LicenseClient
      *   license_type_label 档位文本
      *
      * 已绑了别的域名 / 码不存在 / 已作废 → HTTP 400 + {code:400, message}，
-     * 由 postForm() 抛出（不重试），message 会原样呈现给用户。
-     *
-     * 重试：绑定是幂等的（重复绑同一个域名返回 bound=false + 成功），
-     * 所以和 unbind 一样开 3 次尝试，没有重复提交的副作用。
+     * 由 postForm() 当业务错误抛出，message 会原样呈现给用户。
+     * 网络层失败直接抛异常，不自动换线（由用户手动切换线路后重试）。
      *
      * @return array{bound?:bool, code_masked?:string, domain?:string, license_type?:string, license_type_label?:string}
      * @throws RuntimeException
@@ -58,7 +83,7 @@ final class LicenseClient
         return self::postForm('api/open/v1/em/license/bind', [
             'code'   => $code,
             'domain' => $domain,
-        ], 8, 3);
+        ], 8);
     }
 
     /**
@@ -68,6 +93,8 @@ final class LicenseClient
      *   - 直接返回 302 Location
      *   - 返回 JSON { url: "https://..." }
      * 这里两种情况都支持。
+     *
+     * 只请求当前选中的线路；网络层失败直接抛异常，由用户手动切换线路。
      *
      * @throws RuntimeException
      */
@@ -80,10 +107,9 @@ final class LicenseClient
             'user_email' => $adminEmail,
             'return_url' => $returnUrl,
         ]);
-        $url = self::baseUrl() . '/api/v1/buy/level?' . $query;
 
-        // 走 HEAD / GET 看服务端给 302 还是 JSON —— 一次 GET 请求就够
-        $ch = curl_init($url);
+        // 走 GET 看服务端给 302 还是 JSON —— 一次请求就够
+        $ch = curl_init(self::baseUrl() . 'api/v1/buy/level?' . $query);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => false,
@@ -94,11 +120,10 @@ final class LicenseClient
         ] + self::tlsOptions());
         $resp = curl_exec($ch);
         $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $err = curl_error($ch);
         curl_close($ch);
 
         if ($resp === false) {
-            throw new RuntimeException('授权服务器不可达，请切换其他线路后重试(；′⌒`)');
+            throw new RuntimeException('线路请求失败，请重试');
         }
 
         // 302 → 直接返回服务端提供的 URL
@@ -110,11 +135,14 @@ final class LicenseClient
         $pos = strpos($resp, "\r\n\r\n");
         $body = $pos === false ? $resp : substr($resp, $pos + 4);
         $json = json_decode($body, true);
-        if (is_array($json) && !empty($json['ok']) && !empty($json['data']['url'])) {
-            return (string) $json['data']['url'];
+        if (is_array($json)) {
+            if (!empty($json['ok']) && !empty($json['data']['url'])) {
+                return (string) $json['data']['url'];
+            }
+            throw new RuntimeException('获取购买链接失败');
         }
 
-        throw new RuntimeException('获取购买链接失败');
+        throw new RuntimeException('获取购买链接失败（HTTP ' . $httpCode . '）');
     }
 
     /**
@@ -132,7 +160,7 @@ final class LicenseClient
      * ⚠️ 没授权也是 HTTP 200 的**成功响应**，不是调用失败 —— 调用方要看 authorized
      * 这个布尔值决定清不清本地记录，别把它当异常处理。
      *
-     * 重试：只读检查、幂等，开 3 次尝试（与 base-data / bind / unbind 一致）。
+     * 换线：不自动换线，只请求当前选中的线路；线路不通直接抛异常。
      *
      * @return array{authorized?:bool, domain?:string, license_type?:string|null, license_type_label?:string|null}
      * @throws RuntimeException 网络不可达 / 响应格式异常 / code != 200
@@ -142,7 +170,7 @@ final class LicenseClient
         return self::postForm('api/open/v1/em/license/status', [
             'domain' => $domain,
             'code'   => $code,
-        ], 8, 3);
+        ], 8);
     }
 
     /**
@@ -157,10 +185,9 @@ final class LicenseClient
      *   unbound=false —— 这个授权码本来就没绑域名，**同样算成功**（幂等）
      *
      * 域名和授权码不是同一条 / 码不存在 / 已作废 → HTTP 400 + {code:400, message}，
-     * 由 postForm() 当业务错误抛出（不重试）。
+     * 由 postForm() 当业务错误抛出。
      *
-     * 重试：解绑是幂等的（重复清同一个绑定结果一样），所以放心开 3 次尝试，
-     * 不会像下单那样有重复提交的副作用。超时/次数与 baseData() 保持一致。
+     * 换线：不自动换线，只请求当前选中的线路；线路不通直接抛异常。
      *
      * @return array{unbound?:bool, code_masked?:string, domain?:string} 服务端 data
      * @throws RuntimeException 参数错误 / 网络错误
@@ -170,7 +197,7 @@ final class LicenseClient
         return self::postForm('api/open/v1/em/license/unbind', [
             'code'   => $code,
             'domain' => $domain,
-        ], 8, 3);
+        ], 8);
     }
 
     /**
@@ -196,10 +223,8 @@ final class LicenseClient
      * 注意：域名未授权、身份标识匹配不到都是 **成功响应**（HTTP 200 / code 200），
      * 分别看 authorized 与 identity_matched，不要当成调用失败。
      *
-     * 开了 3 次尝试：线路被墙/抖动是偶发的，重试一次往往就过去了。这是只读接口，
-     * 重试无副作用。单次超时取 8s（不是默认的 10s）是为了把最坏耗时压在
-     * 3*8 + 1s 退避 ≈ 25s，低于常见的 PHP max_execution_time=30s；
-     * 配套地，前端 loadDashIndex() 的 AJAX timeout 要 ≥ 这个预算（现为 40s）。
+     * 换线：不自动换线，只请求当前选中的线路；线路不通直接抛异常，由用户手动切换。
+     * 超时取 8s（不是默认的 10s），最坏耗时就是单次超时。
      *
      * @return array 服务端 data 整段
      * @throws RuntimeException 网络不可达 / 响应格式异常 / code != 200
@@ -210,7 +235,7 @@ final class LicenseClient
             'identity' => $identity,
             'domain'   => $domain,
             'version'  => $version,
-        ], 8, 3);
+        ], 8);
     }
 
     /**
@@ -241,7 +266,7 @@ final class LicenseClient
      *
      * 注意：`name_en` 仍被调用方当作本地安装目录名（slug）使用，不是纯展示字段。
      *
-     * 重试：只读、幂等，开 3 次尝试。
+     * 换线：不自动换线，只请求当前选中的线路。
      *
      * @param array{domain?:string,code?:string,page?:int,per_page?:int,type?:string,scope?:string,category_id?:int,keyword?:string} $params
      * @return array{license:array<string,mixed>,categories:array<int,array>,meta:array<string,int>,data:array<int,array>}
@@ -250,7 +275,7 @@ final class LicenseClient
     public static function appList(array $params): array
     {
         // print_r($params);die;
-        $data = self::postForm('api/open/v1/em/app-list', $params, 15, 3);
+        $data = self::postForm('api/open/v1/em/app-list', $params, 15);
 
         $meta = is_array($data['meta'] ?? null) ? $data['meta'] : [];
         return [
@@ -329,7 +354,7 @@ final class LicenseClient
      *             min_version, package_url, package_name, package_size, can_buy,
      *             purchased, is_pay, updated_at}
      *
-     * 重试：只读、幂等，开 3 次尝试。
+     * 换线：不自动换线，只请求当前选中的线路。
      *
      * @param array<int, array{name_en:string, version:string}> $apps 本机已装清单
      * @return array{license:array<string,mixed>,data:array<int,array>}
@@ -371,7 +396,7 @@ final class LicenseClient
      * channels[] 每项 {id, name, logo, type, type_label}；logo 是授权服务器上的
      * 相对路径，调用方要补当前线路域名后再给前端。
      *
-     * 重试：下单有副作用（重复提交会重复生成订单），**保持不重试**。
+     * 换线：下单有副作用（重复提交会重复生成订单），**只发一次、不换线、不重试**。
      *
      * @return array 服务端 data（含 pay_url / channels）
      * @throws RuntimeException
@@ -390,8 +415,10 @@ final class LicenseClient
     // --------------------------------------------------------
 
     /**
-     * 返回当前生效的线路 URL（public 别名，方便外部模块拿到授权服务器域名拼相对地址用）。
+     * 返回当前选中线路的 URL（public 别名，方便外部模块拿到授权服务器域名拼相对地址用）。
      * 用于 UpdateService::resolvePackageUrl() 在服务端返回相对路径时补域名。
+     *
+     * 实际请求也只走这条线路（见 apiRequest()），不会自动换线。
      */
     public static function currentBaseUrl(): string
     {
@@ -427,22 +454,164 @@ final class LicenseClient
     }
 
     /**
-     * 内置的授权服务器地址（init.php 的 EM_LICENSE_SERVER_URL）。
+     * 归一化线路常量（兼容历史上写成字符串的单线路形式）。
      *
-     * 只认常量不读 config.php：地址必须跟着程序版本走，否则用户在线更新后
-     * config.php 里残留的旧地址会继续生效。返回值统一带尾部斜杠，方便拼路径。
+     * @param mixed $raw
+     * @return array<int, array{url:string, name:string}>
      */
-    private static function serverUrl(): string
+    private static function normalizeLines($raw): array
     {
-        if (!defined('EM_LICENSE_SERVER_URL')) {
-            return '';
+        if (is_string($raw)) {
+            $raw = [['url' => $raw, 'name' => '官方线路']];
         }
-        $url = trim((string) EM_LICENSE_SERVER_URL);
-        return $url === '' ? '' : rtrim($url, '/') . '/';
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($raw as $line) {
+            $url  = is_array($line) ? (string) ($line['url'] ?? '') : (string) $line;
+            $name = is_array($line) ? (string) ($line['name'] ?? '') : '';
+            $url  = trim($url);
+            if ($url === '') {
+                continue;
+            }
+            $out[] = [
+                'url'  => rtrim($url, '/') . '/',
+                'name' => $name !== '' ? $name : '官方线路',
+            ];
+        }
+        return $out;
+    }
+
+    /** 官方线路列表。纯常量，不读 Config —— 安装程序在 init.php 之前也能用。 */
+    public static function officialLines(): array
+    {
+        return self::normalizeLines(self::OFFICIAL_BASE_URL);
+    }
+
+    /** 开发模式线路列表。纯常量。 */
+    public static function devLines(): array
+    {
+        return self::normalizeLines(self::DEV_BASE_URL);
     }
 
     /**
-     * 返回当前生效的线路 URL（固定单线路）。
+     * 当前生效的线路列表。
+     *
+     * 后台「设置 › 安全设置 › 开发模式」开启时整组换成 DEV_BASE_URL。
+     * 地址不读 config.php：线路必须跟着程序版本走，否则老站升级后残留的旧地址会生效。
+     *
+     * @return array<int, array{url:string, name:string}>
+     */
+    public static function lines(): array
+    {
+        return (string) Config::get('license_dev_mode', '0') === '1'
+            ? self::devLines()
+            : self::officialLines();
+    }
+
+    /**
+     * 并发测一遍每条线路的延迟（毫秒），给后台线路列表展示用。
+     *
+     * 每条线路发一个 HEAD 请求（不下载正文），取各自的 TOTAL_TIME。并发发起，
+     * 所以总耗时约等于最慢那条，而不是逐条相加。
+     * 连不上 / 超时 → ms 为 null；HEAD 被服务端拒绝（405 等）也算可达 ——
+     * 这里要的是网络往返时间，不是响应内容。
+     *
+     * @return array<int, array{index:int, url:string, name:string, ms:int|null}>
+     */
+    public static function measureLatency(): array
+    {
+        $lines = self::lines();
+        if ($lines === []) {
+            return [];
+        }
+
+        $mh = function_exists('curl_multi_init') ? curl_multi_init() : false;
+        $handles = [];
+
+        if ($mh !== false) {
+            foreach ($lines as $i => $line) {
+                $ch = curl_init($line['url']);
+                if ($ch === false) {
+                    continue;
+                }
+                curl_setopt_array($ch, [
+                    CURLOPT_NOBODY            => true,
+                    CURLOPT_RETURNTRANSFER    => true,
+                    CURLOPT_FOLLOWLOCATION    => false,
+                    CURLOPT_TIMEOUT_MS        => 3000,
+                    CURLOPT_CONNECTTIMEOUT_MS => 2000,
+                    CURLOPT_USERAGENT         => 'emshop-' . EM_VERSION,
+                ] + self::tlsOptions());
+                curl_multi_add_handle($mh, $ch);
+                $handles[$i] = $ch;
+            }
+
+            do {
+                $status = curl_multi_exec($mh, $active);
+                if ($active) {
+                    curl_multi_select($mh, 0.05);
+                }
+            } while ($active && $status === CURLM_OK);
+        }
+
+        $out = [];
+        foreach ($lines as $i => $line) {
+            $ms = null;
+            if (isset($handles[$i])) {
+                $ch = $handles[$i];
+                if (curl_errno($ch) === 0) {
+                    $ms = (int) round((float) curl_getinfo($ch, CURLINFO_TOTAL_TIME) * 1000);
+                }
+                curl_multi_remove_handle($mh, $ch);
+                curl_close($ch);
+            }
+            $out[] = [
+                'index' => $i,
+                'url'   => $line['url'],
+                'name'  => $line['name'],
+                'ms'    => $ms,
+            ];
+        }
+
+        if ($mh !== false) {
+            curl_multi_close($mh);
+        }
+
+        return $out;
+    }
+
+    /** 当前优先线路的索引；配置值越界（比如线路列表变短了）时回落 0。 */
+    public static function currentLineIndex(): int
+    {
+        $lines = self::lines();
+        if ($lines === []) {
+            return 0;
+        }
+        $idx = (int) Config::get('license_line_index', '0');
+        return ($idx < 0 || $idx >= count($lines)) ? 0 : $idx;
+    }
+
+    /**
+     * 当前选中线路的 URL（当前索引那条）。一条都没配时返回空串、不抛异常 ——
+     * init.php 启动阶段要 define 常量，那里不适合 catch。
+     */
+    public static function defaultBaseUrl(): string
+    {
+        $lines = self::lines();
+        return $lines === [] ? '' : $lines[self::currentLineIndex()]['url'];
+    }
+
+    /** 当前选中线路 URL，统一带尾部斜杠，方便拼路径。 */
+    private static function serverUrl(): string
+    {
+        return self::defaultBaseUrl();
+    }
+
+    /**
+     * 当前选中线路 URL；一条线路都没配时抛异常。
      *
      * @throws RuntimeException
      */
@@ -450,26 +619,9 @@ final class LicenseClient
     {
         $url = self::serverUrl();
         if ($url === '') {
-            throw new RuntimeException('未配置授权服务器地址（init.php 的 EM_LICENSE_SERVER_URL 缺失）');
+            throw new RuntimeException('未配置授权服务器地址（LicenseClient 的线路常量缺失）');
         }
         return $url;
-    }
-
-    /**
-     * 授权服务器线路列表。
-     *
-     * 现在只有一条线路，返回单元素数组即可；保留「列表」这个形状是为了兼容既有的
-     * 调用方（下载地址白名单、应用资源 host 等），它们只依赖第 0 个元素。
-     *
-     * @return array<int, array{url:string, name:string}>
-     */
-    public static function lines(): array
-    {
-        $url = self::serverUrl();
-        if ($url === '') {
-            return [];
-        }
-        return [['url' => $url, 'name' => '官方线路']];
     }
 
     /**
@@ -478,48 +630,46 @@ final class LicenseClient
      * 用于所有返回 {code:200, msg, data} 格式的现网接口（/api/open/v1/em/* 等）。
      * 错误文案字段两种都有：老接口用 msg，新接口（/api/open/v1/*）用 message，取到哪个用哪个。
      *
-     * 重试（$maxAttempts > 1）：只针对**网络层失败**——连不上 / 超时 / 网关错误 / 被中间设备
-     * 换成非 JSON 响应（线路被墙时的典型表现）。业务响应（能解出 JSON）一律不重试，
-     * 因为调用方里有下单、购买、领取应用这类**重复提交有副作用**的接口。
-     * 所以默认 1 次（不重试），只在明确的只读调用点上显式开启。
+     * 换线：只请求当前选中的线路，不自动换线、不重试。
+     * 连不上 / 超时 / 响应异常都直接抛异常，由用户在后台手动切换线路后再试。
      *
-     * 预算：总耗时约 $maxAttempts * $timeout + 退避，调用方要保证它落在
-     * PHP max_execution_time 与前端 AJAX timeout 之内（见 baseData() 的取值说明）。
+     * 预算：最坏耗时就是单次 $timeout。
      *
      * @param array<string, mixed> $payload
-     * @param int $maxAttempts 最多尝试次数（含首次）；1 = 不重试
      * @return array 返回 data（保证是数组）
      * @throws RuntimeException
      */
-    private static function postForm(string $path, array $payload, int $timeout = 10, int $maxAttempts = 1): array
+    private static function postForm(string $path, array $payload, int $timeout = 10): array
     {
-        return self::apiRequest($path, $payload, false, $timeout, $maxAttempts);
+        return self::apiRequest($path, $payload, false, $timeout);
     }
 
     /**
      * 通用 JSON POST → 解析 { code, msg|message, data } → 返回 data / 抛异常。
      *
-     * 与 postForm() 共用同一套重试与信封口径，区别只在请求体是 JSON、Content-Type 是
+     * 与 postForm() 共用同一套线路与信封口径，区别只在请求体是 JSON、Content-Type 是
      * application/json —— app-update-check 这类接口只收 JSON。
      *
      * @param array<string, mixed> $payload
-     * @param int $maxAttempts 最多尝试次数（含首次）；1 = 不重试
      * @return array 返回 data（保证是数组）
      * @throws RuntimeException
      */
-    private static function postJson(string $path, array $payload, int $timeout = 15, int $maxAttempts = 3): array
+    private static function postJson(string $path, array $payload, int $timeout = 15): array
     {
-        return self::apiRequest($path, $payload, true, $timeout, $maxAttempts);
+        return self::apiRequest($path, $payload, true, $timeout);
     }
 
     /**
-     * 表单 / JSON POST 的公共实现，重试策略与信封解析只有这一份。
+     * 表单 / JSON POST 的公共实现：线路与信封解析只有这一份。
+     *
+     * 只请求当前选中的线路，不自动换线、不重试；网络层失败直接抛
+     * 「线路请求失败，请重试」，由用户手动切换线路后再试。
      *
      * @param array<string, mixed> $payload
      * @return array 返回 data（保证是数组）
      * @throws RuntimeException
      */
-    private static function apiRequest(string $path, array $payload, bool $asJson, int $timeout, int $maxAttempts): array
+    private static function apiRequest(string $path, array $payload, bool $asJson, int $timeout): array
     {
         $url = self::baseUrl() . ltrim($path, '/');
 
@@ -530,60 +680,37 @@ final class LicenseClient
             throw new RuntimeException('请求数据编码失败');
         }
         $contentType = $asJson ? 'application/json' : 'application/x-www-form-urlencoded';
-        $maxAttempts = max(1, $maxAttempts);
 
-        $lastError = '';
-        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
-            // 退避：抖动/丢包往往连着来几秒，隔一下再试比立刻重打成功率高
-            if ($attempt === 2) usleep(300000);   // 300ms
-            if ($attempt === 3) usleep(700000);   // 700ms
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $body,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => [
+                'Content-Type: ' . $contentType,
+                'Accept: application/json',
+                'X-Em-Client: emshop-' . EM_VERSION,
+            ],
+            CURLOPT_TIMEOUT => $timeout,
+            CURLOPT_CONNECTTIMEOUT => 5,
+        ] + self::tlsOptions());
+        $resp = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
 
-            $ch = curl_init($url);
-            curl_setopt_array($ch, [
-                CURLOPT_POST => true,
-                CURLOPT_POSTFIELDS => $body,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_HTTPHEADER => [
-                    'Content-Type: ' . $contentType,
-                    'Accept: application/json',
-                    'X-Em-Client: emshop-' . EM_VERSION,
-                ],
-                CURLOPT_TIMEOUT => $timeout,
-                CURLOPT_CONNECTTIMEOUT => 5,
-            ] + self::tlsOptions());
-            $resp = curl_exec($ch);
-            $err = curl_error($ch);
-            $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-
-            if ($resp === false) {
-                if($err == 'Recv failure: Connection was reset'){
-                    $lastError = '请求失败，服务端线路被墙，请重试~';
-                }else{
-                    $lastError = '当前使用线路请求失败，请切换其他线路后重试，错误信息：' . $err;
-                }
-                
-                continue;
-            }
-
-            $json = json_decode($resp, true);
-            if (!is_array($json)) {
-                // 4xx 是请求本身的问题，重试没意义；其余（5xx / 0）按线路故障重试
-                if ($httpCode >= 400 && $httpCode < 500) {
-                    throw new RuntimeException('响应格式异常（HTTP ' . $httpCode . '）');
-                }
-                $lastError = '响应格式异常（HTTP ' . $httpCode . '）';
-                continue;
-            }
-
-            // 能解出业务响应 → 不管成功失败都不再重试（避免重复下单等副作用）
-            if ((int) ($json['code'] ?? 0) !== 200) {
-                throw new RuntimeException((string) ($json['msg'] ?? $json['message'] ?? '请求失败'));
-            }
-            return is_array($json['data'] ?? null) ? $json['data'] : [];
+        if ($resp === false) {
+            throw new RuntimeException('线路请求失败，请重试');
         }
 
-        throw new RuntimeException($lastError !== '' ? $lastError : '请求失败');
+        $json = json_decode($resp, true);
+        if (!is_array($json)) {
+            throw new RuntimeException('响应格式异常（HTTP ' . $httpCode . '）');
+        }
+
+        if ((int) ($json['code'] ?? 0) !== 200) {
+            throw new RuntimeException((string) ($json['msg'] ?? $json['message'] ?? '请求失败'));
+        }
+        return is_array($json['data'] ?? null) ? $json['data'] : [];
     }
 
     /**
@@ -619,7 +746,7 @@ final class LicenseClient
         curl_close($ch);
 
         if ($resp === false) {
-            throw new RuntimeException('授权服务器不可达，请切换其他线路后重试');
+            throw new RuntimeException('线路请求失败，请重试');
         }
 
         $json = json_decode($resp, true);

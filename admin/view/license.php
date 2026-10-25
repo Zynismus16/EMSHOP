@@ -13,7 +13,7 @@ $esc = function (string $s): string {
 
 $activated = $current !== null;
 
-// 「官方网站」入口 = 当前生效的授权服务端线路地址（单线路，见 LicenseService::getAllLines）
+// 「官方网站」入口 = 当前首选线路地址（多线路，见 LicenseService::getAllLines）
 $officialSiteUrl = (string) ($lines[$currentLineIndex]['url'] ?? '');
 ?>
 <div class="lic-page lic-page--centered">
@@ -27,7 +27,7 @@ $officialSiteUrl = (string) ($lines[$currentLineIndex]['url'] ?? '');
         </div>
 
         <h2 class="lic-activate__title">激活正版 EMSHOP</h2>
-        <p class="lic-activate__subtitle">请求加载失败时，可尝试在顶栏右上角切换其他线路</p>
+        <p class="lic-activate__subtitle">请求加载失败时系统会自动尝试其他线路，请稍后重试</p>
 
         <div class="lic-activate__form">
             <label for="licenseCode" class="lic-input-label">授权许可证 (License Key)</label>
