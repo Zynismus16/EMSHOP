@@ -226,6 +226,16 @@ $__runModeDesc   = $__deliveryAsync
     ? '异步发货 · 常驻进程'
     : '同步发货 · 请求执行';
 
+// 官方线路卡：当前选中的授权服务器线路。只读本地配置，不发请求；切换入口在后台顶栏
+$__curLineName = '官方线路';
+try {
+    $__lines   = LicenseService::getAllLines();
+    $__lineIdx = LicenseService::currentLineIndex();
+    $__curLineName = (string) ($__lines[$__lineIdx]['name'] ?? $__curLineName);
+} catch (Throwable $e) {
+    // 读配置失败不影响页面
+}
+
 /* ============================================================
  * 官方公告 / 广告推广 / 版本更新 / 代理商联系方式
  *   这四块数据依赖中心服务器接口，同步拉取会拖慢首屏
@@ -390,6 +400,28 @@ $__runModeDesc   = $__deliveryAsync
                 <span class="dash-metric__month-label">获取下载信息</span>
                 <button type="button" class="dash-version-btn" id="dashGetDownloadBtn">
                     <i class="fa fa-download"></i> 获取
+                </button>
+            </div>
+        </div>
+
+        <!-- 官方线路：当前选中的授权服务器线路，切换入口复用后台顶栏的线路菜单 -->
+        <div class="dash-metric dash-metric--action" style="--m-color: #0ea5e9; --m-soft: #ecfeff;">
+            <div class="dash-metric__head">
+                <span class="dash-metric__icon"><i class="fa fa-signal"></i></span>
+                <span class="dash-metric__label">官方线路</span>
+                <span class="dash-metric__official-tag">官方</span>
+            </div>
+            <div class="dash-metric__main">
+                <div class="dash-metric__value-row">
+                    <span class="dash-metric__today-value dash-line-name"><?= $esc($__curLineName) ?></span>
+                </div>
+                <div class="dash-metric__yesterday">用于程序版本 / 模板 / 插件的安装与更新</div>
+            </div>
+            <div class="dash-metric__month">
+                <!-- 左侧：当前线路的连接速度，由 admin_index_data 一起返回 -->
+                <span class="dash-metric__month-label dash-line-latency" id="dashLineLatency">--</span>
+                <button type="button" class="dash-version-btn" id="dashLineSwitchBtn">
+                    <i class="fa fa-exchange"></i> 切换
                 </button>
             </div>
         </div>
@@ -661,6 +693,16 @@ $__runModeDesc   = $__deliveryAsync
 .dash-runmode--fpm {
     color: #f59e0b !important;
 }
+
+/* 官方线路卡：线路名比较长，缩小字号避免撑破卡片 */
+.dash-line-name {
+    font-size: 18px;
+}
+/* 官方线路卡：连接速度分档配色（与顶栏线路菜单一致） */
+.dash-line-latency { font-variant-numeric: tabular-nums; }
+.dash-line-latency.is-ok   { color: #10b981; }
+.dash-line-latency.is-warn { color: #f59e0b; }
+.dash-line-latency.is-bad  { color: #ef4444; }
 
 /* 环比 chip：绝对定位到大号数字右上角，不占居中计算空间 */
 .dash-ratio {
@@ -1614,6 +1656,19 @@ $(function () {
         });
         $list.html(html);
     }
+    // 官方线路卡：当前线路的连接速度（admin_index_data 顺带返回，null = 连不上）
+    function renderLineLatency(ms) {
+        var $el = $('#dashLineLatency');
+        if (!$el.length) return;
+        var v = parseInt(ms, 10);
+        $el.removeClass('is-ok is-warn is-bad');
+        if (ms === null || ms === undefined || isNaN(v) || v < 0) {
+            $el.addClass('is-bad').text('连接失败');
+            return;
+        }
+        // 分档配色与顶栏线路菜单一致：<150ms 绿 / 150-500ms 橙 / ≥500ms 红
+        $el.addClass(v < 150 ? 'is-ok' : (v < 500 ? 'is-warn' : 'is-bad')).text(v + ' ms');
+    }
     function renderVersion(data) {
         var $label = $('#dashVersionLabel');
         var $btn = $('#dashCheckUpdate');
@@ -1652,9 +1707,15 @@ $(function () {
             // 后端只请求当前线路（不自动换线），单次超时 8s；这里留足余量
             timeout: 40000
         }).done(function (resp) {
+            if (!resp || resp.code !== 200 || !resp.data) {
+                renderDashFail();
+                return;
+            }
+            // 连接速度随这次响应一起回来，即使上游业务数据失败也可能已经测到
+            renderLineLatency(resp.data.line_latency_ms);
             // 上游失败时 HTTP 仍是 200，但带 error、update 是空壳 —— 必须按失败处理，
             // 否则版本卡会误显示「当前已是最新版本」。
-            if (!resp || resp.code !== 200 || !resp.data || dashDataFailed(resp.data)) {
+            if (dashDataFailed(resp.data)) {
                 renderDashFail();
                 return;
             }
@@ -2029,6 +2090,16 @@ $(function () {
     $('#dashGetDownloadBtn').on('click', function () {
         if (typeof layui === 'undefined' || !layui.layer) return;
         dashEnsureIndexData(openDownloadPopup);
+    });
+
+    // 官方线路卡：复用后台顶栏的线路切换菜单，不另做一套。
+    // stopPropagation 是必须的 —— 顶栏那边有「点击外部关闭」的 document 监听，
+    // 不拦住的话本次点击冒泡上去会把刚展开的菜单立刻关掉。
+    $('#dashLineSwitchBtn').on('click', function (e) {
+        e.stopPropagation();
+        if (!$('#adminLineDropdown').hasClass('is-open')) {
+            $('#adminLineSwitch .admin-line-switch__trigger').trigger('click');
+        }
     });
 
     // 销售趋势折线图：初始化空图表，再用 AJAX 拉数据 + 按日期范围切换

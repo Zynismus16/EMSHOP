@@ -43,6 +43,9 @@ final class LicenseClient
     ];
 
 
+    /** 最近一次 apiRequest() 的网络往返耗时（毫秒），见 lastRequestLatencyMs() */
+    private static ?int $lastLatencyMs = null;
+
     /** 本地联调用的线路（后台「开发模式」开启时走它，见 init.php） */
     // public const DEV_BASE_URL = 'http://127.0.0.1:3000/';
 
@@ -514,10 +517,12 @@ final class LicenseClient
     /**
      * 并发测一遍每条线路的延迟（毫秒），给后台线路列表展示用。
      *
-     * 每条线路发一个 HEAD 请求（不下载正文），取各自的 TOTAL_TIME。并发发起，
+     * 每条线路发一个最小 GET（首页），取各自的 TOTAL_TIME。并发发起，
      * 所以总耗时约等于最慢那条，而不是逐条相加。
-     * 连不上 / 超时 → ms 为 null；HEAD 被服务端拒绝（405 等）也算可达 ——
-     * 这里要的是网络往返时间，不是响应内容。
+     * **不要用 HEAD**：实测部分线路/节点会直接重置 HEAD 连接（curl errno 35），
+     * 会导致明明能用却全部显示"超时"。
+     * 连不上 / 超时 → ms 为 null；4xx/5xx 也算可达 —— 这里要的是网络往返，
+     * 不是响应内容。
      *
      * @return array<int, array{index:int, url:string, name:string, ms:int|null}>
      */
@@ -538,8 +543,7 @@ final class LicenseClient
                     continue;
                 }
                 curl_setopt_array($ch, [
-                    CURLOPT_NOBODY            => true,
-                    CURLOPT_RETURNTRANSFER    => true,
+                    CURLOPT_RETURNTRANSFER    => true,  // GET（不要 HEAD，见方法注释）
                     CURLOPT_FOLLOWLOCATION    => false,
                     CURLOPT_TIMEOUT_MS        => 3000,
                     CURLOPT_CONNECTTIMEOUT_MS => 2000,
@@ -583,7 +587,18 @@ final class LicenseClient
         return $out;
     }
 
-    /** 当前优先线路的索引；配置值越界（比如线路列表变短了）时回落 0。 */
+    /**
+     * 最近一次 apiRequest() 的网络往返耗时（毫秒）；请求没拿到响应时为 null。
+     *
+     * 后台首页「官方线路」卡用：直接取拉取数据那次请求的耗时，
+     * 与「获取信息」走的是同一个接口、同一条线路，不额外探测。
+     */
+    public static function lastRequestLatencyMs(): ?int
+    {
+        return self::$lastLatencyMs;
+    }
+
+    /** 当前线路的索引；配置值越界（比如线路列表变短了）时回落 0。 */
     public static function currentLineIndex(): int
     {
         $lines = self::lines();
@@ -696,16 +711,20 @@ final class LicenseClient
         ] + self::tlsOptions());
         $resp = curl_exec($ch);
         $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $elapsedMs = (int) round((float) curl_getinfo($ch, CURLINFO_TOTAL_TIME) * 1000);
         curl_close($ch);
 
         if ($resp === false) {
+            self::$lastLatencyMs = null;
             throw new RuntimeException('线路请求失败，请重试');
         }
 
         $json = json_decode($resp, true);
         if (!is_array($json)) {
+            self::$lastLatencyMs = null;
             throw new RuntimeException('响应格式异常（HTTP ' . $httpCode . '）');
         }
+        self::$lastLatencyMs = $elapsedMs;
 
         if ((int) ($json['code'] ?? 0) !== 200) {
             throw new RuntimeException((string) ($json['msg'] ?? $json['message'] ?? '请求失败'));
