@@ -264,9 +264,9 @@ try {
             </p>
         </div>
         <div class="dash-hero__actions">
-            <a href="/admin/license.php" data-pjax="#adminContent" class="dash-hero-btn">
-                <i class="fa fa-shield"></i> 去激活
-            </a>
+            <button type="button" class="dash-hero-btn" id="dashActivateBtn">
+                <i class="fa fa-shield"></i> 立即激活
+            </button>
             <button type="button" class="dash-hero-btn dash-hero-btn--ghost" id="dashGetLicense">
                 <i class="fa fa-external-link"></i> 获取激活码
             </button>
@@ -594,6 +594,94 @@ try {
     backdrop-filter: blur(8px);
 }
 .dash-hero-btn--ghost:hover { background: rgba(255,255,255,0.22); color: #fff; border-color: rgba(255,255,255,0.4); }
+
+/* ---------- 立即激活弹窗 ---------- */
+.dash-activate {
+    padding: 26px 26px 22px;
+    box-sizing: border-box;
+}
+.dash-activate__hero { text-align: center; margin-bottom: 22px; }
+.dash-activate__icon {
+    width: 56px; height: 56px;
+    margin: 0 auto 14px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #eef2ff, #e0e7ff);
+    color: #6366f1; font-size: 24px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: inset 0 0 0 1px rgba(99,102,241,0.12);
+}
+.dash-activate__title {
+    font-size: 18px; font-weight: 700; color: #0f172a;
+    letter-spacing: 0.3px;
+}
+.dash-activate__sub {
+    margin-top: 6px;
+    font-size: 12.5px; color: #6b7280; line-height: 1.6;
+}
+.dash-activate__label {
+    display: block;
+    font-size: 12px; color: #6b7280;
+    letter-spacing: 0.2px;
+    margin-bottom: 8px;
+}
+.dash-activate__field { position: relative; }
+.dash-activate__field > i {
+    position: absolute; left: 14px; top: 50%;
+    transform: translateY(-50%);
+    color: #9ca3af; font-size: 13px;
+    pointer-events: none;
+}
+.dash-activate__input {
+    width: 100%; height: 48px;
+    padding: 0 14px 0 38px;
+    border: 1.5px solid #e5e7eb; border-radius: 12px;
+    background: #fafbfc;
+    font-family: 'JetBrains Mono', Consolas, Monaco, monospace;
+    font-size: 13.5px; letter-spacing: 0.5px;
+    outline: none; box-sizing: border-box;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+.dash-activate__input::placeholder { color: #9ca3af; letter-spacing: 0.3px; }
+.dash-activate__input:focus {
+    border-color: #6366f1; background: #fff;
+    box-shadow: 0 0 0 4px rgba(99,102,241,0.12);
+}
+.dash-activate__submit {
+    width: 100%; height: 44px;
+    margin-top: 16px;
+    border: 0; border-radius: 12px;
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
+    color: #fff; font-size: 14px; font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 6px 16px rgba(79,70,229,0.28);
+    transition: filter 0.15s ease, box-shadow 0.15s ease;
+}
+.dash-activate__submit i { font-size: 12px; margin-left: 4px; }
+.dash-activate__submit:hover {
+    filter: brightness(1.06);
+    box-shadow: 0 8px 20px rgba(79,70,229,0.34);
+}
+.dash-activate__submit:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; }
+.dash-activate__foot {
+    margin-top: 14px;
+    text-align: center;
+    font-size: 12.5px; color: #9ca3af;
+}
+.dash-activate__foot a {
+    color: #6366f1; text-decoration: none;
+    margin-left: 2px;
+}
+.dash-activate__foot a:hover { text-decoration: underline; }
+.dash-activate__foot a i { font-size: 10px; margin-left: 2px; }
+.dash-activate__note {
+    margin-top: 16px;
+    padding: 8px 12px;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    font-size: 11.5px; color: #9ca3af;
+    background: #f8fafc;
+    border: 1px dashed #e5e7eb;
+    border-radius: 8px;
+}
 
 /* ---------- 核心指标 6 卡（今日 / 昨日 / 环比 / 本月） ---------- */
 .dash-metrics {
@@ -2008,6 +2096,84 @@ $(function () {
             layui.layer.close(idx);
         });
     }
+
+    // 未授权 Hero 上的"立即激活"按钮 → 直接弹窗输入激活码，不再跳转授权页
+    $('#dashActivateBtn').on('click', function () {
+        if (typeof layui === 'undefined' || !layui.layer) return;
+        var layer = layui.layer;
+        var idx = layer.open({
+            type: 1,
+            title: '立即激活',
+            skin: 'admin-modal',
+            area: [window.innerWidth >= 640 ? '460px' : '94%', 'auto'],
+            shadeClose: false,
+            content:
+                '<div class="dash-activate">' +
+                    '<div class="dash-activate__hero">' +
+                        '<div class="dash-activate__icon"><i class="fa fa-shield"></i></div>' +
+                        '<div class="dash-activate__title">激活正版 EMSHOP</div>' +
+                        '<div class="dash-activate__sub">解锁专属模板 · 付费插件 · 应用商店 · 优先技术支持</div>' +
+                    '</div>' +
+                    '<label class="dash-activate__label" for="dashLicenseCode">授权许可证（License Key）</label>' +
+                    '<div class="dash-activate__field">' +
+                        '<i class="fa fa-key"></i>' +
+                        '<input type="text" id="dashLicenseCode" class="dash-activate__input" ' +
+                               'placeholder="请输入您的激活码" maxlength="64" autocomplete="off" spellcheck="false">' +
+                    '</div>' +
+                    '<button type="button" class="dash-activate__submit" id="dashActivateSubmit">' +
+                        '立即激活<i class="fa fa-arrow-right"></i>' +
+                    '</button>' +
+                    '<div class="dash-activate__foot">还没有激活码？' +
+                        '<a href="javascript:void(0);" id="dashActivateGetCode">获取正版授权<i class="fa fa-arrow-right"></i></a>' +
+                    '</div>' +
+                    '<div class="dash-activate__note"><i class="fa fa-lock"></i> 激活码与当前域名绑定，请妥善保管</div>' +
+                '</div>'
+        });
+
+        $('#dashActivateGetCode').on('click', function () {
+            layer.close(idx);
+            dashEnsureIndexData(openBuyLinksPopup);
+        });
+
+        function submitActivate() {
+            var code = $.trim($('#dashLicenseCode').val() || '');
+            if (!code) {
+                $('#dashLicenseCode').focus();
+                layer.msg('请输入激活码');
+                return;
+            }
+            var $btn = $('#dashActivateSubmit');
+            var origHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> 激活中');
+            $.ajax({
+                url: '/admin/license.php',
+                type: 'POST',
+                dataType: 'json',
+                data: {
+                    _action: 'activate',
+                    license_code: code,
+                    csrf_token: window.adminCsrfToken || ''
+                }
+            }).done(function (res) {
+                if (res && res.code === 200) {
+                    if (res.data && res.data.csrf_token) window.adminCsrfToken = res.data.csrf_token;
+                    layer.msg('激活成功：' + ((res.data && res.data.level_label) || ''));
+                    setTimeout(function () { location.reload(); }, 900);
+                    return;
+                }
+                layer.msg((res && res.msg) || '激活失败');
+                $btn.prop('disabled', false).html(origHtml);
+            }).fail(function () {
+                layer.msg('网络异常');
+                $btn.prop('disabled', false).html(origHtml);
+            });
+        }
+
+        $('#dashActivateSubmit').on('click', submitActivate);
+        $('#dashLicenseCode').on('keydown', function (e) {
+            if (e.key === 'Enter') submitActivate();
+        }).focus();
+    });
 
     // 未授权 Hero 上的"获取激活码"按钮 → 与授权码卡片的「获取」完全一致：
     // 用 admin_index_data 里已拿到的 buy_links 弹层，缺数据时先重拉（loading）。

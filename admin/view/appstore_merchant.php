@@ -157,56 +157,6 @@ $csrfToken = $csrfToken ?? Csrf::token();
 /* 刷新按钮（放在搜索框右侧） */
 .appstore-refresh-btn i { margin-right: 4px; }
 
-/* ===== 主站 / 分站 应用商店切换器(挂在标题下方) ===== */
-.appstore-tab-switch {
-    display: inline-flex;
-    gap: 0;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    margin-bottom: 16px;
-    overflow: hidden;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-}
-.appstore-tab-switch__item {
-    padding: 10px 20px;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 500;
-    color: #64748b;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    transition: all 0.2s ease;
-    user-select: none;
-    text-decoration: none;
-    position: relative;
-    border-right: 1px solid #e2e8f0;
-}
-.appstore-tab-switch__item:last-child {
-    border-right: none;
-}
-.appstore-tab-switch__item:hover {
-    color: #4C7D71;
-    background: rgba(76, 125, 113, 0.04);
-}
-.appstore-tab-switch__item.is-active {
-    background: linear-gradient(135deg, #4C7D71 0%, #5a9486 100%);
-    color: #ffffff;
-    font-weight: 600;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
-}
-.appstore-tab-switch__item.is-active:hover {
-    background: linear-gradient(135deg, #427065 0%, #4C7D71 100%);
-}
-.appstore-tab-switch__item .fa {
-    font-size: 13px;
-    transition: transform 0.2s ease;
-}
-.appstore-tab-switch__item:hover .fa {
-    transform: scale(1.1);
-}
-
 /* ===== 分站应用商店提示框 ===== */
 .merchant-store-notice {
     display: flex;
@@ -241,16 +191,6 @@ $csrfToken = $csrfToken ?? Csrf::token();
 
 <div class="admin-page admin-page-appstore">
     <h1 class="admin-page__title">应用商店</h1>
-
-    <!-- 主站 / 分站 切换:跳转两个独立 view(本文件 = 分站) -->
-    <div class="appstore-tab-switch" id="appstoreTabSwitch">
-        <a class="appstore-tab-switch__item" href="/admin/appstore.php">
-            <i class="fa fa-server"></i>主站应用商店
-        </a>
-        <a class="appstore-tab-switch__item is-active" href="/admin/appstore.php?tab=merchant">
-            <i class="fa fa-cubes"></i>分站应用商店
-        </a>
-    </div>
 
     <!-- 分站应用商店功能说明 -->
     <div class="merchant-store-notice">
@@ -774,16 +714,6 @@ $(function () {
             }
         });
 
-        // ---------- 主站 / 分站 应用商店切换 ----------
-        // 物理拆分两个 view 后,切换走 PJAX 跳转(失败回退整页跳转);本 view 是分站
-        $('#appstoreTabSwitch').on('click', '.appstore-tab-switch__item', function (e) {
-            e.preventDefault();
-            var $item = $(this);
-            if ($item.hasClass('is-active')) return;
-            var url = $item.attr('href');
-            if ($.pjax) $.pjax({ url: url, container: '#adminContent' });
-            else        location.href = url;
-        });
     });
 });
 </script>
