@@ -2009,18 +2009,11 @@ $(function () {
         });
     }
 
-    // 未授权 Hero 上的"获取授权码"按钮 → 打开通用 agent_config 弹窗
+    // 未授权 Hero 上的"获取激活码"按钮 → 与授权码卡片的「获取」完全一致：
+    // 用 admin_index_data 里已拿到的 buy_links 弹层，缺数据时先重拉（loading）。
     $('#dashGetLicense').on('click', function () {
         if (typeof layui === 'undefined' || !layui.layer) return;
-        layui.layer.open({
-            type: 2,
-            title: '获取正版授权码',
-            skin: 'admin-modal',
-            maxmin: false,
-            area: [window.innerWidth >= 640 ? '580px' : '94%', window.innerHeight >= 640 ? '580px' : '88%'],
-            shadeClose: true,
-            content: '/admin/license.php?_popup=agent'
-        });
+        dashEnsureIndexData(openBuyLinksPopup);
     });
 
     // ========== 附加操作卡（授权码 / 下载）==========
