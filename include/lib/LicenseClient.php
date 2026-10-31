@@ -43,9 +43,6 @@ final class LicenseClient
     ];
 
 
-    /** 最近一次 apiRequest() 的网络往返耗时（毫秒），见 lastRequestLatencyMs() */
-    private static ?int $lastLatencyMs = null;
-
     /** 本地联调用的线路（后台「开发模式」开启时走它，见 init.php） */
     // public const DEV_BASE_URL = 'http://127.0.0.1:3000/';
 
@@ -55,7 +52,7 @@ final class LicenseClient
             'name' => '香港优化;三网混合;开发模式',
         ],
         [
-            'url' => 'http://127.0.0.1:8801/',
+            'url' => 'http://127.0.0.1:8800/',
             'name' => '香港极速;三网直连;开发模式',
         ],
     ];
@@ -212,8 +209,10 @@ final class LicenseClient
      * 请求参数：
      *   identity  代理商身份标识（base.php 的 SERVICE_TOKEN）。匹配不到不算错误：
      *             服务端会回 identity_matched=false + used_fallback=true，并用站长那份配置兜底
-     *   domain    本机正在跑的域名（可传完整地址，服务端归一成顶级域名后查授权）
+     *   domain    本机正在跑的域名（可传完整地址，服务端归一成完整域名（含 www / 子域名）后查授权）
      *   version   客户端当前版本号（形如 1.3.18，开头的 v 可有可无）
+     *   code      本地保存的授权码（可选）。传了服务端就按「授权码 + 域名」两个都对上
+     *             才算授权（同 license/status）；没传时老口径「只认域名」
      *
      * 返回 data 的字段（原样交给 LicenseService::fetchBaseData() 归一化）：
      *   domain / authorized / license_type / license_type_label
@@ -232,13 +231,409 @@ final class LicenseClient
      * @return array 服务端 data 整段
      * @throws RuntimeException 网络不可达 / 响应格式异常 / code != 200
      */
-    public static function baseData(string $identity, string $domain, string $version): array
+    public static function baseData(string $identity, string $domain, string $version, string $code = ''): array
     {
         return self::postForm('api/open/v1/em/base-data', [
             'identity' => $identity,
             'domain'   => $domain,
             'version'  => $version,
+            'code'     => $code,
         ], 8);
+    }
+
+    /**
+     * 登录官方账号（POST /api/auth/login，scope=site）。
+     *
+     * 用的是官方站前台账号（邮箱/用户名 + 密码），与授权码无关。
+     * 返回 data：{ token, token_type, expires_in, scope, user{...} }
+     * 注意官方站这套接口的成功码是 **0**（不是 open/v1 那套的 200），
+     * 所以这里显式传 successCode=0。账号不存在 / 密码错误时服务端回
+     * {code:401xx, message}，由 apiRequest() 当业务错误抛出，message 原样呈现。
+     *
+     * @throws RuntimeException
+     */
+    public static function accountLogin(string $account, string $password): array
+    {
+        return self::postForm('api/auth/login', [
+            'account'  => $account,
+            'password' => $password,
+            'scope'    => 'site',
+            // 长期 token（官方站按 LONG_TOKEN_TTL 签，10 年）
+            'remember' => 1,
+        ], 10, 0);
+    }
+
+    /**
+     * 发送官方账号邮箱验证码（POST /api/auth/email-code，scene=register）。
+     * 成功码同样是 0；上游按 IP/邮箱限流，错误信息在 message 里。
+     *
+     * @throws RuntimeException
+     */
+    public static function accountEmailCode(string $email, string $scene = 'register'): array
+    {
+        return self::postForm('api/auth/email-code', [
+            'email' => $email,
+            'scene' => $scene,
+        ], 10, 0);
+    }
+
+    /**
+     * 邮箱验证码登录（POST /api/auth/login-code，免密码）。
+     *
+     * 先调 accountEmailCode($email, 'login') 发码，再带码调这里。
+     * 成功码 0，返回 data 与密码登录一致（token / expires_in / user）。
+     *
+     * @throws RuntimeException
+     */
+    public static function accountLoginByCode(string $email, string $code): array
+    {
+        return self::postForm('api/auth/login-code', [
+            'email'    => $email,
+            'code'     => $code,
+            'remember' => 1,
+        ], 10, 0);
+    }
+
+    /**
+     * 注册官方账号（POST /api/auth/register）。
+     *
+     * 必填：email / code（6 位邮箱验证码）/ password / password_confirmation
+     * 成功回 201 + {code:0, data:{token, user}} —— 注册即登录，直接当登录结果用。
+     *
+     * @param array<string, string> $payload
+     * @throws RuntimeException
+     */
+    public static function accountRegister(array $payload): array
+    {
+        return self::postForm('api/auth/register', $payload, 10, 0);
+    }
+
+    /**
+     * 当前官方账号名下的全部激活码（GET /api/my/licenses，需 Bearer token）。
+     *
+     * 返回 data.licenses[]：{id, code, level, type, type_label, domain, status, created_at, ...}
+     * （status=1 有效 / 0 作废；domain 为空串表示还没绑域名）
+     * token 失效 / 被禁用时上游回 401 + {code:401xx, message}，这里抛异常。
+     *
+     * @return array<int, array<string, mixed>>
+     * @throws RuntimeException
+     */
+    public static function myLicenses(string $token): array
+    {
+        $data = self::apiRequest('api/my/licenses', [], false, 10, 0, 'GET', $token);
+        return is_array($data['licenses'] ?? null) ? array_values($data['licenses']) : [];
+    }
+
+    /**
+     * 当前官方账号的资料（GET /api/auth/me，需 Bearer token）。
+     *
+     * 账号管理弹窗的「个人资料」用，返回官方站用户表整行（password 已被上游剔除）：
+     * {id, username, email, nickname, avatar, role, status, balance, created_at, last_login_at, ...}
+     * 这里不裁剪字段，展示层按需取。
+     * token 失效 / 被禁用时上游回 401 + {code:401xx, message}，这里抛异常。
+     *
+     * @return array<string, mixed>
+     * @throws RuntimeException
+     */
+    public static function accountProfile(string $token): array
+    {
+        return self::apiRequest('api/auth/me', [], false, 10, 0, 'GET', $token);
+    }
+
+    /**
+     * 当前官方账号概况（GET /api/my/overview，需 Bearer token）。
+     *
+     * 一次拿到账号资料 + 名下激活码数量，给后台官方账号宫格用 ——
+     * 余额和数量同屏显示，拆成 /auth/me + /my/licenses 就是两次跨网往返。
+     * 返回 data：{user{...}, licenses_count}
+     *
+     * @return array<string, mixed>
+     * @throws RuntimeException
+     */
+    public static function accountOverview(string $token): array
+    {
+        return self::apiRequest('api/my/overview', [], false, 10, 0, 'GET', $token);
+    }
+
+    /**
+     * 当前官方账号的余额变动明细（GET /api/my/balance/logs，需 Bearer token）。
+     *
+     * 上游返回：{data[], total, page, per_page, last_page, balance}
+     * data[] 每项 {action, action_label, amount, balance_before, balance_after,
+     *            remark, operator_id, operator_name, created_at}
+     * amount 恒为正数，方向看 balance_after 与 balance_before 的大小。
+     *
+     * @return array<string, mixed>
+     * @throws RuntimeException
+     */
+    public static function accountBalanceLogs(string $token, int $page = 1, int $perPage = 10): array
+    {
+        return self::apiRequest('api/my/balance/logs', [
+            'page'     => max(1, $page),
+            'per_page' => min(50, max(1, $perPage)),
+        ], false, 10, 0, 'GET', $token);
+    }
+
+    /**
+     * 把激活码绑定到当前官方账号（POST /api/my/licenses/bind，需 Bearer token）。
+     *
+     * 上游只接受「池子里还没发出的码」或「无主（user_id 为空）的旧码」：
+     * 已经在别人名下的直接拒（「该激活码已被其他账号绑定」），
+     * 已经是自己名下的也会说明（「这个激活码已经在你的账号下了」）。
+     * 返回 data.license；失败由 apiRequest 按 errors 第一条抛异常。
+     *
+     * @return array<string, mixed>
+     * @throws RuntimeException
+     */
+    public static function accountBindLicense(string $token, string $code): array
+    {
+        return self::apiRequest('api/my/licenses/bind', [
+            'code' => $code,
+        ], false, 10, 0, 'POST', $token);
+    }
+
+    /**
+     * 移除授权（POST /api/my/licenses/unbind，需 Bearer token）。
+     *
+     * 凭「账号（token）+ 激活码」把这条码绑定的域名清空；只能动自己名下的码。
+     * 返回 data.license（域名已清空的那条）。
+     *
+     * @return array<string, mixed>
+     * @throws RuntimeException 码不存在 / 不属于当前账号 / 已作废 / 网络失败
+     */
+    public static function accountRemoveLicense(string $token, string $code): array
+    {
+        return self::apiRequest('api/my/licenses/unbind', [
+            'code' => $code,
+        ], false, 10, 0, 'POST', $token);
+    }
+
+    /**
+     * 重置授权码（POST /api/my/licenses/reset，需 Bearer token）。
+     *
+     * 凭「账号（token）+ 激活码」给这条授权换一个新码：旧码立即失效，
+     * 域名、档位、归属都不动。返回 data.license（code 已是新的）。
+     *
+     * @return array<string, mixed>
+     * @throws RuntimeException 码不存在 / 不属于当前账号 / 已作废 / 网络失败
+     */
+    public static function accountResetLicense(string $token, string $code): array
+    {
+        return self::apiRequest('api/my/licenses/reset', [
+            'code' => $code,
+        ], false, 10, 0, 'POST', $token);
+    }
+
+    /**
+     * 当前官方账号的代理端配置（GET /api/my/config，需 Bearer token）。
+     *
+     * 返回 data.config：{identity, qq_service, qq_group, wechat_service, wechat_qr,
+     *                    tg_service, tg_group_url, em_buy_links, em_download_links,
+     *                    tt_buy_links, tt_download_links}
+     * 未设置的项是空串。这些值只在展示时读取，本站不落库。
+     *
+     * @return array<string, mixed>
+     * @throws RuntimeException
+     */
+    public static function accountConfig(string $token): array
+    {
+        return self::apiRequest('api/my/config', [], false, 10, 0, 'GET', $token);
+    }
+
+    /**
+     * 保存代理端配置（POST /api/my/config/secure-update，需 Bearer token + 登录密码）。
+     *
+     * 上游先校验密码（本人确认这一笔改动），再按白名单写入；密码不落库。
+     * 返回 data.config（保存后的完整配置）。
+     *
+     * @param array<string, string> $payload 白名单字段 + password
+     * @return array<string, mixed>
+     * @throws RuntimeException 密码为空 / 密码错误 / 校验失败 / 网络失败
+     */
+    public static function accountConfigUpdateWithPassword(string $token, array $payload): array
+    {
+        return self::apiRequest('api/my/config/secure-update', $payload, false, 10, 0, 'POST', $token);
+    }
+
+    /**
+     * 代理的激活码仓库（GET /api/my/em-codes，需 Bearer token，仅代理/管理）。
+     *
+     * 上游一次返回：{data[], total, page, per_page, last_page, counts{unused, used}, pricing, balance}
+     * data[] 每项 {id, code, type, type_label, agent_id, remark, created_at}
+     * 已使用的那一类还带 {user_id, domain}（绑定情况的判定依据）。
+     * pricing = {configured, overdraft, fees{type: {label, fee, affordable}}}
+     *
+     * usage：unused（默认，未绑用户且未绑域名）/ used（绑了用户或域名）。
+     *
+     * @return array<string, mixed>
+     * @throws RuntimeException 无代理权限 / token 失效 / 网络失败
+     */
+    public static function accountEmCodes(string $token, int $page = 1, int $perPage = 10, string $usage = 'unused'): array
+    {
+        return self::apiRequest('api/my/em-codes', [
+            'page'     => max(1, $page),
+            'per_page' => min(100, max(1, $perPage)),
+            'usage'    => $usage === 'used' ? 'used' : 'unused',
+        ], false, 10, 0, 'GET', $token);
+    }
+
+    /**
+     * 生成一批激活码（POST /api/my/em-codes，需 Bearer token，仅代理/管理）。
+     *
+     * 按档位单价从上游账号余额扣费；返回 data：{codes[], cost, balance}
+     *
+     * @throws RuntimeException 无代理权限 / 价格未配置 / 余额不足 / 参数不合法 / 网络失败
+     */
+    public static function accountGenerateEmCodes(string $token, string $type, int $count): array
+    {
+        return self::apiRequest('api/my/em-codes', [
+            'type'  => $type,
+            'count' => max(1, min(200, $count)),
+        ], false, 15, 0, 'POST', $token);
+    }
+
+    /**
+     * 代理版本安装包列表（GET /api/my/versions/em，仅代理 / 管理员）。
+     *
+     * 上游只返回已发布的 EMSHOP 版本：{id, version, changelog, updated_at, has_install}。
+     */
+    public static function accountVersions(string $token, int $page = 1, int $perPage = 10): array
+    {
+        return self::apiRequest('api/my/versions/em', [
+            'page'     => max(1, $page),
+            'per_page' => min(100, max(1, $perPage)),
+        ], false, 10, 0, 'GET', $token);
+    }
+
+    /**
+     * 下载代理版本源码包（GET /api/my/versions/em/{id}/source，二进制 zip）。
+     *
+     * 上游会在包里把 `base.php` 的 SERVICE_TOKEN 换成当前代理的身份标识；
+     * 没配身份标识时回 40307（JSON 信封，不是二进制）。
+     *
+     * @return array{body: string, disposition: string}
+     * @throws RuntimeException 没配身份标识 / 版本不存在 / 网络失败
+     */
+    public static function accountVersionSource(string $token, int $id): array
+    {
+        $url = self::baseUrl() . 'api/my/versions/em/' . max(1, $id) . '/source';
+        $disposition = '';
+
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => [
+                'Accept: application/zip, application/json',
+                'X-Em-Client: emshop-' . EM_VERSION,
+                'Authorization: Bearer ' . $token,
+            ],
+            CURLOPT_TIMEOUT => 120,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_HEADERFUNCTION => static function ($handle, string $line) use (&$disposition): int {
+                if (stripos($line, 'Content-Disposition:') === 0) {
+                    $disposition = trim(substr($line, strlen('Content-Disposition:')));
+                }
+
+                return strlen($line);
+            },
+        ] + self::tlsOptions());
+
+        $resp = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = curl_error($ch);
+        curl_close($ch);
+
+        if ($resp === false) {
+            throw new RuntimeException('下载失败：' . ($err !== '' ? $err : '线路请求失败，请重试'));
+        }
+
+        if ($httpCode !== 200) {
+            $json = json_decode($resp, true);
+            $msg = is_array($json) ? (string) ($json['message'] ?? $json['msg'] ?? '') : '';
+
+            throw new RuntimeException($msg !== '' ? $msg : ('下载失败（HTTP ' . $httpCode . '）'));
+        }
+
+        return ['body' => $resp, 'disposition' => $disposition];
+    }
+
+    /**
+     * 代理订单记录（GET /api/my/orders，仅代理 / 管理员）。只返回自己名下的单。
+     *
+     * 参数：page / per_page / keyword / project（em|tt|空）/ state（四态|空）
+     * 返回：标准分页信封 + commission_rate（当前佣金比例）。
+     */
+    public static function accountOrders(string $token, array $params): array
+    {
+        return self::apiRequest('api/my/orders', [
+            'page'     => max(1, (int) ($params['page'] ?? 1)),
+            'per_page' => min(100, max(1, (int) ($params['per_page'] ?? 10))),
+            'keyword'  => (string) ($params['keyword'] ?? ''),
+            'project'  => (string) ($params['project'] ?? ''),
+            'state'    => (string) ($params['state'] ?? ''),
+        ], false, 15, 0, 'GET', $token);
+    }
+
+    /**
+     * 我的广告位列表（GET /api/my/ad-slots/em，仅代理 / 管理员）。
+     *
+     * 参数：page / per_page / keyword / state（on|expired|off|空）
+     */
+    public static function accountAdSlots(string $token, array $params): array
+    {
+        return self::apiRequest('api/my/ad-slots/em', [
+            'page'     => max(1, (int) ($params['page'] ?? 1)),
+            'per_page' => min(100, max(1, (int) ($params['per_page'] ?? 10))),
+            'keyword'  => (string) ($params['keyword'] ?? ''),
+            'state'    => (string) ($params['state'] ?? ''),
+        ], false, 10, 0, 'GET', $token);
+    }
+
+    /** 广告位详情（GET /api/my/ad-slots/em/{id}，列表里没有正文）。 */
+    public static function accountAdSlotDetail(string $token, int $id): array
+    {
+        return self::apiRequest('api/my/ad-slots/em/' . max(1, $id), [], false, 10, 0, 'GET', $token);
+    }
+
+    /** 新建广告位（POST /api/my/ad-slots/em，agent_id 由上游按 token 注入）。 */
+    public static function accountAdSlotCreate(string $token, array $payload): array
+    {
+        return self::apiRequest('api/my/ad-slots/em', $payload, false, 10, 0, 'POST', $token);
+    }
+
+    /** 修改广告位（PUT /api/my/ad-slots/em/{id}，JSON 请求体）。 */
+    public static function accountAdSlotUpdate(string $token, int $id, array $payload): array
+    {
+        return self::apiRequest('api/my/ad-slots/em/' . max(1, $id), $payload, true, 10, 0, 'PUT', $token);
+    }
+
+    /** 删除广告位（DELETE /api/my/ad-slots/em/{id}）。 */
+    public static function accountAdSlotDelete(string $token, int $id): array
+    {
+        return self::apiRequest('api/my/ad-slots/em/' . max(1, $id), [], false, 10, 0, 'DELETE', $token);
+    }
+
+    /** 广告位上移 / 下移（POST /api/my/ad-slots/em/{id}/move）。 */
+    public static function accountAdSlotMove(string $token, int $id, string $direction): array
+    {
+        return self::apiRequest('api/my/ad-slots/em/' . max(1, $id) . '/move', [
+            'direction' => $direction,
+        ], false, 10, 0, 'POST', $token);
+    }
+
+    /**
+     * 代理安装记录（GET /api/my/install-records，仅代理 / 管理员）。
+     *
+     * 参数：page / per_page / keyword / project（em|tt|空）
+     */
+    public static function accountInstallRecords(string $token, array $params): array
+    {
+        return self::apiRequest('api/my/install-records', [
+            'page'     => max(1, (int) ($params['page'] ?? 1)),
+            'per_page' => min(100, max(1, (int) ($params['per_page'] ?? 10))),
+            'keyword'  => (string) ($params['keyword'] ?? ''),
+            'project'  => (string) ($params['project'] ?? ''),
+        ], false, 10, 0, 'GET', $token);
     }
 
     /**
@@ -248,7 +643,7 @@ final class LicenseClient
      * 授权信息与分类一并返回，不用再单独请求。
      *
      * 请求参数：
-     *   domain      本机在跑的域名（必填，服务端归一成顶级域名）
+     *   domain      本机在跑的域名（必填，服务端归一成完整域名）
      *   code        授权码；不传 = 未授权。传了必须是有效的、且绑的就是 domain，
      *               否则一律按未授权算（服务端会回 VIP 门槛价 + can_buy=false）
      *   page        第几页，从 1 开始
@@ -275,10 +670,10 @@ final class LicenseClient
      * @return array{license:array<string,mixed>,categories:array<int,array>,meta:array<string,int>,data:array<int,array>}
      * @throws RuntimeException
      */
-    public static function appList(array $params): array
+    public static function appList(array $params, string $token = ''): array
     {
         // print_r($params);die;
-        $data = self::postForm('api/open/v1/em/app-list', $params, 15);
+        $data = self::postForm('api/open/v1/em/app-list', $params, 15, 200, $token);
 
         $meta = is_array($data['meta'] ?? null) ? $data['meta'] : [];
         return [
@@ -304,9 +699,9 @@ final class LicenseClient
      * @return array{list:array<int,array>,count:int,page:int,pageNum:int}
      * @throws RuntimeException
      */
-    public static function appPurchasedList(array $params): array
+    public static function appPurchasedList(array $params, string $token = ''): array
     {
-        $data = self::postForm('api/app_purchased_list.php', $params, 15);
+        $data = self::postForm('api/app_purchased_list.php', $params, 15, 200, $token);
         return [
             'list'    => is_array($data['list'] ?? null) ? array_values($data['list']) : [],
             'count'   => (int) ($data['count']   ?? 0),
@@ -330,7 +725,7 @@ final class LicenseClient
      * @return array ['app' => [...], 'pay_methods' => [...]]
      * @throws RuntimeException
      */
-    public static function appDetail(int $appId, string $emkey, string $host, int $scope, string $memberCode = ''): array
+    public static function appDetail(int $appId, string $emkey, string $host, int $scope, string $memberCode = '', string $token = ''): array
     {
         return self::postForm('api/app_detail.php', [
             'app_id'      => $appId,
@@ -338,7 +733,9 @@ final class LicenseClient
             'host'        => $host,
             'scope'       => $scope,
             'member_code' => $memberCode,
-        ], 10);
+            /* 后台应用商店的拉取标记，供上游记录调用账号 */
+            'source'      => 'admin',
+        ], 10, 200, $token);
     }
 
     /**
@@ -389,7 +786,7 @@ final class LicenseClient
      *
      * 请求参数（三个都必填，买东西必须有授权码 —— 这点和应用列表不同）：
      *   code    授权码；必须是有效的、且绑的就是 domain，否则服务端拒绝
-     *   domain  本机在跑的域名（可传完整地址，服务端归一成顶级域名）
+     *   domain  本机在跑的域名（可传完整地址，服务端归一成完整域名）
      *   app_id  要买的应用 id（取自 app-list 返回的 data[].id）
      *
      * 返回 data：
@@ -411,6 +808,36 @@ final class LicenseClient
             'domain' => $domain,
             'app_id' => $appId,
         ], 15);
+    }
+
+    /**
+     * 站内扫码支付：取这一单的支付宝当面付二维码。
+     *
+     * 返回 data：{order_no, amount, qr_code, pay_method, pay_method_label, expires_at}
+     * `qr_code` 是二维码**内容**（`https://qr.alipay.com/...`），前端用二维码组件画图。
+     * 站点没开「支付宝当面付」时服务端回 400 + message，这里抛异常原样展示。
+     *
+     * @throws RuntimeException
+     */
+    public static function appOrderQrcode(string $orderNo, int $channelId = 0): array
+    {
+        return self::postForm('api/open/v1/em/order/' . rawurlencode($orderNo) . '/qrcode', [
+            // 用户在下单响应的 channels 里选的那个渠道；不传由服务端挑
+            'channel_id' => $channelId,
+        ], 15);
+    }
+
+    /**
+     * 站内扫码支付：查这一单的支付结果（服务端会主动问一次支付宝）。
+     *
+     * 返回 data：{order_no, amount, status, state, paid_at, expires_at}
+     * state：pending / paid / closed / expired。
+     *
+     * @throws RuntimeException
+     */
+    public static function appOrderStatus(string $orderNo): array
+    {
+        return self::postForm('api/open/v1/em/order/' . rawurlencode($orderNo) . '/status', [], 15);
     }
 
     // --------------------------------------------------------
@@ -587,17 +1014,6 @@ final class LicenseClient
         return $out;
     }
 
-    /**
-     * 最近一次 apiRequest() 的网络往返耗时（毫秒）；请求没拿到响应时为 null。
-     *
-     * 后台首页「官方线路」卡用：直接取拉取数据那次请求的耗时，
-     * 与「获取信息」走的是同一个接口、同一条线路，不额外探测。
-     */
-    public static function lastRequestLatencyMs(): ?int
-    {
-        return self::$lastLatencyMs;
-    }
-
     /** 当前线路的索引；配置值越界（比如线路列表变短了）时回落 0。 */
     public static function currentLineIndex(): int
     {
@@ -654,9 +1070,9 @@ final class LicenseClient
      * @return array 返回 data（保证是数组）
      * @throws RuntimeException
      */
-    private static function postForm(string $path, array $payload, int $timeout = 10): array
+    private static function postForm(string $path, array $payload, int $timeout = 10, int $successCode = 200, string $token = ''): array
     {
-        return self::apiRequest($path, $payload, false, $timeout);
+        return self::apiRequest($path, $payload, false, $timeout, $successCode, 'POST', $token);
     }
 
     /**
@@ -681,53 +1097,99 @@ final class LicenseClient
      * 「线路请求失败，请重试」，由用户手动切换线路后再试。
      *
      * @param array<string, mixed> $payload
+     * @param int $successCode 成功响应的 code（open/v1 是 200，官方站 auth/* 是 0）
+     * @param string $method 请求方法：POST（默认）/ GET
+     * @param string $token 非空时带 `Authorization: Bearer`（官方站 /my/* 需要）
      * @return array 返回 data（保证是数组）
      * @throws RuntimeException
      */
-    private static function apiRequest(string $path, array $payload, bool $asJson, int $timeout): array
-    {
-        $url = self::baseUrl() . ltrim($path, '/');
+    private static function apiRequest(
+        string $path,
+        array $payload,
+        bool $asJson,
+        int $timeout,
+        int $successCode = 200,
+        string $method = 'POST',
+        string $token = ''
+    ): array {
+        $url    = self::baseUrl() . ltrim($path, '/');
+        $method = strtoupper($method);
+        $isGet  = $method === 'GET';
 
-        $body = $asJson
-            ? json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
-            : http_build_query($payload);
-        if ($body === false) {
-            throw new RuntimeException('请求数据编码失败');
+        // POST / PUT / PATCH 带请求体；DELETE 只带路径（上游也不需要体）
+        $hasBody = in_array($method, ['POST', 'PUT', 'PATCH'], true);
+
+        if ($isGet && $payload !== []) {
+            $url .= '?' . http_build_query($payload);
         }
-        $contentType = $asJson ? 'application/json' : 'application/x-www-form-urlencoded';
 
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => $body,
+        $body = '';
+        if ($hasBody) {
+            $body = $asJson
+                ? json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                : http_build_query($payload);
+            if ($body === false) {
+                throw new RuntimeException('请求数据编码失败');
+            }
+        }
+
+        $headers = [
+            'Accept: application/json',
+            'X-Em-Client: emshop-' . EM_VERSION,
+        ];
+        if ($hasBody) {
+            $headers[] = 'Content-Type: ' . ($asJson ? 'application/json' : 'application/x-www-form-urlencoded');
+        }
+        if ($token !== '') {
+            $headers[] = 'Authorization: Bearer ' . $token;
+        }
+
+        $options = [
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER => [
-                'Content-Type: ' . $contentType,
-                'Accept: application/json',
-                'X-Em-Client: emshop-' . EM_VERSION,
-            ],
+            CURLOPT_HTTPHEADER => $headers,
             CURLOPT_TIMEOUT => $timeout,
             CURLOPT_CONNECTTIMEOUT => 5,
-        ] + self::tlsOptions());
+        ] + self::tlsOptions();
+        if ($method === 'POST') {
+            $options[CURLOPT_POST] = true;
+            $options[CURLOPT_POSTFIELDS] = $body;
+        } elseif ($isGet) {
+            $options[CURLOPT_HTTPGET] = true;
+        } else {
+            $options[CURLOPT_CUSTOMREQUEST] = $method;
+            if ($hasBody) {
+                $options[CURLOPT_POSTFIELDS] = $body;
+            }
+        }
+
+        $ch = curl_init($url);
+        curl_setopt_array($ch, $options);
         $resp = curl_exec($ch);
         $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $elapsedMs = (int) round((float) curl_getinfo($ch, CURLINFO_TOTAL_TIME) * 1000);
         curl_close($ch);
 
         if ($resp === false) {
-            self::$lastLatencyMs = null;
             throw new RuntimeException('线路请求失败，请重试');
         }
 
         $json = json_decode($resp, true);
         if (!is_array($json)) {
-            self::$lastLatencyMs = null;
             throw new RuntimeException('响应格式异常（HTTP ' . $httpCode . '）');
         }
-        self::$lastLatencyMs = $elapsedMs;
 
-        if ((int) ($json['code'] ?? 0) !== 200) {
-            throw new RuntimeException((string) ($json['msg'] ?? $json['message'] ?? '请求失败'));
+        // 成功码不同接口不一样：open/v1 那套是 200，官方站前台接口（auth/*）是 0
+        if ((int) ($json['code'] ?? -1) !== $successCode) {
+            $msg = (string) ($json['msg'] ?? $json['message'] ?? '请求失败');
+            // 校验失败时上游只给通用文案（参数校验失败），具体原因在 errors 里 —— 取第一条
+            if (isset($json['errors']) && is_array($json['errors'])) {
+                foreach ($json['errors'] as $first) {
+                    if (is_string($first) && $first !== '') {
+                        $msg = $first;
+                        break;
+                    }
+                }
+            }
+            throw new RuntimeException($msg);
         }
         return is_array($json['data'] ?? null) ? $json['data'] : [];
     }
@@ -798,10 +1260,10 @@ final class LicenseClient
      * @param array{domain?:string,code?:string,page?:int,per_page?:int,type?:string,category_id?:int,keyword?:string} $params
      * @return array{license:array<string,mixed>,categories:array<int,array>,meta:array<string,int>,data:array<int,array>}
      */
-    public static function mainAppList(array $params): array
+    public static function mainAppList(array $params, string $token = ''): array
     {
         $params['scope'] = 'main';
-        return self::appList($params);
+        return self::appList($params, $token);
     }
 
     /**
@@ -812,10 +1274,10 @@ final class LicenseClient
      * @param array{domain?:string,code?:string,page?:int,per_page?:int,type?:string,category_id?:int,keyword?:string} $params
      * @return array{license:array<string,mixed>,categories:array<int,array>,meta:array<string,int>,data:array<int,array>}
      */
-    public static function merchantAppList(array $params): array
+    public static function merchantAppList(array $params, string $token = ''): array
     {
         $params['scope'] = 'branch';
-        return self::appList($params);
+        return self::appList($params, $token);
     }
 
     /**
@@ -824,10 +1286,10 @@ final class LicenseClient
      * @param array{page?:int,pageNum?:int,type?:string,category_id?:int,keyword?:string,emkey?:string,host?:string} $params
      * @return array{list:array<int,array>,count:int,page:int,pageNum:int}
      */
-    public static function mainAppPurchasedList(array $params): array
+    public static function mainAppPurchasedList(array $params, string $token = ''): array
     {
         $params['scope'] = 1;
-        return self::appPurchasedList($params);
+        return self::appPurchasedList($params, $token);
     }
 
     /**
@@ -836,26 +1298,26 @@ final class LicenseClient
      * @param array{page?:int,pageNum?:int,type?:string,category_id?:int,keyword?:string,emkey?:string,host?:string} $params
      * @return array{list:array<int,array>,count:int,page:int,pageNum:int}
      */
-    public static function merchantAppPurchasedList(array $params): array
+    public static function merchantAppPurchasedList(array $params, string $token = ''): array
     {
         $params['scope'] = 2;
-        return self::appPurchasedList($params);
+        return self::appPurchasedList($params, $token);
     }
 
     /**
      * 主站货架 · 应用详情 + 支付方式。
      */
-    public static function mainAppDetail(int $appId, string $emkey, string $host): array
+    public static function mainAppDetail(int $appId, string $emkey, string $host, string $token = ''): array
     {
-        return self::appDetail($appId, $emkey, $host, 1, '');
+        return self::appDetail($appId, $emkey, $host, 1, '', $token);
     }
 
     /**
      * 分站货架 · 应用详情 + 支付方式(主站为分站采购时弹窗一次拉齐)。
      */
-    public static function merchantAppDetail(int $appId, string $emkey, string $host): array
+    public static function merchantAppDetail(int $appId, string $emkey, string $host, string $token = ''): array
     {
-        return self::appDetail($appId, $emkey, $host, 2, '');
+        return self::appDetail($appId, $emkey, $host, 2, '', $token);
     }
 
     /**

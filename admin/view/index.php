@@ -260,11 +260,6 @@ $csrfToken = Csrf::token();
                     <span><?= t('应用商店'); ?></span>
                 </a>
 
-                <!-- 11. 正版授权 -->
-                <a href="/admin/license.php" data-pjax="#adminContent" class="admin-menu-item">
-                    <i class="fa fa-shield"></i>
-                    <span><?= t('正版授权'); ?></span>
-                </a>
             </div>
         </aside>
 
@@ -386,6 +381,7 @@ $csrfToken = Csrf::token();
 <script src="/content/static/lib/cropper.min.js"></script>
 <script src="/content/static/lib/viewer.js/viewer.min.js"></script>
 <script src="/content/static/lib/echarts.min.js"></script>
+<script src="/content/static/lib/qrcode.min.js"></script>
 <script>window.adminCsrfToken = <?php echo json_encode($csrfToken); ?>;</script>
 <script src="/admin/static/js/em-editor-upload.js"></script>
 <script src="/admin/static/js/admin.js"></script>

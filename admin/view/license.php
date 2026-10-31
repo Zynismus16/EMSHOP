@@ -115,7 +115,7 @@ $officialSiteUrl = (string) ($lines[$currentLineIndex]['url'] ?? '');
             <div class="lic-notice">
                 <i class="fa fa-info-circle"></i>
                 <div>
-                    <div class="lic-notice__title">如需更换授权码或迁移站点</div>
+                    <div class="lic-notice__title">如需更换激活码或迁移站点</div>
                     <div class="lic-notice__desc">点击下方"解绑当前主授权域名"释放此域名的激活码后，即可在此页面用新激活码重新激活</div>
                 </div>
             </div>
@@ -829,12 +829,12 @@ $(function(){
 
         // 线路切换已迁移到后台 toolbar 全局（admin/view/index.php），此页不再承载
 
-        // ============= 页面级弹窗：获取授权码 / 联系客服 =============
+        // ============= 页面级弹窗：获取激活码 / 联系客服 =============
         // mode 决定弹窗内容：agent=购买渠道，contact=客服联系方式（两者不共用内容）
         function openAgentPopup(title, mode) {
             layer.open({
                 type: 2,
-                title: title || '获取正版授权码',
+                title: title || '获取正版激活码',
                 skin: 'admin-modal',
                 maxmin: false,
                 area: [window.innerWidth >= 640 ? '580px' : '94%', window.innerHeight >= 640 ? '580px' : '88%'],
@@ -845,7 +845,7 @@ $(function(){
 
         $('#btnGetLicense').on('click', function (e) {
             e.preventDefault();
-            openAgentPopup('获取正版授权码', 'agent');
+            openAgentPopup('获取正版激活码', 'agent');
         });
 
         // 联系客服：已激活卡片和未激活卡片各有一个入口，用同一个类一起兜住

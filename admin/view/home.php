@@ -10,6 +10,12 @@ $esc = function (string $s): string {
 };
 
 $__licenseActivated = LicenseService::isActivated();
+// 安装本身有授权、但当前访问域名不是主授权域名 / 别名时，提示关联激活
+$__licenseRow        = $__licenseActivated ? LicenseService::currentLicense() : null;
+$__licenseHostMatched = $__licenseRow !== null && !empty($__licenseRow['host_matched']);
+$__licenseMainHost    = $__licenseRow !== null ? (string) ($__licenseRow['bound_domain'] ?? '') : '';
+$__licenseLevel       = $__licenseRow !== null ? (string) ($__licenseRow['level'] ?? 'none') : 'none';
+$__licenseLevelLabel  = $__licenseRow !== null ? (string) ($__licenseRow['level_label'] ?? '') : '';
 
 // 主货币符号（从货币配置读，未配置时回退到 ¥）
 $__primary = Currency::getInstance()->getPrimary();
@@ -226,15 +232,9 @@ $__runModeDesc   = $__deliveryAsync
     ? '异步发货 · 常驻进程'
     : '同步发货 · 请求执行';
 
-// 官方线路卡：当前选中的授权服务器线路。只读本地配置，不发请求；切换入口在后台顶栏
-$__curLineName = '官方线路';
-try {
-    $__lines   = LicenseService::getAllLines();
-    $__lineIdx = LicenseService::currentLineIndex();
-    $__curLineName = (string) ($__lines[$__lineIdx]['name'] ?? $__curLineName);
-} catch (Throwable $e) {
-    // 读配置失败不影响页面
-}
+// 官方账号卡：登录态只读本地配置，不发请求；
+// 「管理」按钮打开 license.php?_popup=account 的大 iframe（激活码 / 账号信息 / 退出登录都在里面）
+$__officialAccount = LicenseService::officialAccount();
 
 /* ============================================================
  * 官方公告 / 广告推广 / 版本更新 / 代理商联系方式
@@ -249,6 +249,27 @@ try {
     // 之前版本遗失了这条 doAction 调用，导致 tips 插件整体失效
     doAction('adm_main_top');
     ?>
+
+    <?php if ($__licenseActivated): ?>
+    <!-- 已激活：主授权域名（绿色） / 其它域名经主授权域名关联（琥珀色） -->
+    <div class="dash-attach-note">
+        <span class="dash-attach-note__icon">
+            <i class="fa <?= $__licenseHostMatched ? 'fa-check-circle' : 'fa-link' ?>"></i>
+        </span>
+        <span class="dash-attach-note__body">
+            <b><?= $__licenseHostMatched ? '当前域名已激活正版授权' : '当前域名已由主授权域名关联激活' ?></b>
+            <?php if ($__licenseMainHost !== ''): ?>
+            <small>主授权域名：<?= $esc($__licenseMainHost) ?></small>
+            <?php endif; ?>
+        </span>
+        <span class="dash-attach-note__tags">
+            <?php if ($__licenseLevel !== 'none' && $__licenseLevelLabel !== ''): ?>
+            <span class="dash-attach-note__level dash-level--<?= $esc($__licenseLevel) ?>"><?= $esc($__licenseLevelLabel) ?></span>
+            <?php endif; ?>
+            <span class="dash-attach-note__tag">已激活</span>
+        </span>
+    </div>
+    <?php endif; ?>
 
     <?php if (!$__licenseActivated): ?>
     <!-- ================================ 未授权引导 Hero（仅未授权时展示） ================================ -->
@@ -277,7 +298,7 @@ try {
     <!-- ================================ 核心指标（6 卡 · 今日 / 昨日 / 日环比 / 本月） ================================ -->
     <section class="dash-metrics">
         <?php
-            // 系统版本卡（固定第一位，结构复用 dash-metric，不含环比 chip）
+            // 系统版本卡（结构复用 dash-metric，不含环比 chip）
             $__sysLevel = LicenseService::currentLevel();
             $__sysLevelLabel = LicenseService::levelLabel($__sysLevel);
         ?>
@@ -310,7 +331,43 @@ try {
             </div>
         </div>
 
-        <div class="dash-metric dash-metric--action dash-metric--server" style="--m-color: <?= $__deliveryAsync ? '#10b981' : '#f59e0b' ?>; --m-soft: <?= $__deliveryAsync ? '#ecfdf5' : '#fffbeb' ?>;">
+        <!-- 官方账号：登录官方站账号（登录接口见 LicenseService::loginOfficialAccount） -->
+        <div class="dash-metric dash-metric--action dash-account-card" style="--m-color: #6366f1; --m-soft: #eef2ff;">
+            <div class="dash-metric__head">
+                <span class="dash-metric__icon"><i class="fa fa-user-circle-o"></i></span>
+                <span class="dash-metric__label">官方账号</span>
+                <span class="dash-metric__official-tag">官方</span>
+            </div>
+            <div class="dash-metric__main">
+                <?php if ($__officialAccount === []): ?>
+                <div class="dash-metric__value-row">
+                    <span class="dash-metric__today-value dash-account-offline">未登录</span>
+                </div>
+                <div class="dash-metric__yesterday">登录后可管理账号下的激活码</div>
+                <?php else: ?>
+                <div class="dash-metric__value-row">
+                    <span class="dash-metric__today-value dash-runmode dash-runmode--cli">已登录</span>
+                </div>
+                <div class="dash-metric__yesterday">激活码与账号信息统一管理</div>
+                <?php endif; ?>
+            </div>
+            <div class="dash-metric__month">
+                <span class="dash-account-status <?= $__officialAccount === [] ? '' : 'is-on' ?>">
+                    <i></i><?= $__officialAccount === [] ? '离线' : '在线' ?>
+                </span>
+                <?php if ($__officialAccount === []): ?>
+                <button type="button" class="dash-version-btn" id="dashOfficialLogin">
+                    <i class="fa fa-sign-in"></i> 登录
+                </button>
+                <?php else: ?>
+                <button type="button" class="dash-version-btn" id="dashOfficialManage">
+                    <i class="fa fa-cogs"></i> 管理
+                </button>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <div class="dash-metric dash-metric--action dash-metric--server" style="--m-color: <?= $__deliveryAsync ? '#10b981' : '#3b82f6' ?>; --m-soft: <?= $__deliveryAsync ? '#ecfdf5' : '#eff6ff' ?>;">
             <div class="dash-metric__head">
                 <span class="dash-metric__icon"><i class="fa <?= $__deliveryAsync ? 'fa-terminal' : 'fa-globe' ?>"></i></span>
                 <span class="dash-metric__label">运行模式</span>
@@ -363,21 +420,21 @@ try {
         </div>
         <?php endforeach; ?>
 
-        <!-- 附加操作卡：授权码 / 下载安装包（均为官方来源；任务服务在系统版本后） -->
+        <!-- 附加操作卡：激活码 / 下载安装包（均为官方来源；任务服务在系统版本后） -->
         <div class="dash-metric dash-metric--action" style="--m-color: #10b981; --m-soft: #ecfdf5;">
             <div class="dash-metric__head">
                 <span class="dash-metric__icon"><i class="fa fa-key"></i></span>
-                <span class="dash-metric__label">授权码</span>
+                <span class="dash-metric__label">激活码</span>
                 <span class="dash-metric__official-tag">官方</span>
             </div>
             <div class="dash-metric__main">
                 <div class="dash-metric__value-row">
-                    <span class="dash-metric__today-value">正版授权码</span>
+                    <span class="dash-metric__today-value">正版激活码</span>
                 </div>
-                <div class="dash-metric__yesterday">点击下方按钮获取正版授权码</div>
+                <div class="dash-metric__yesterday">点击下方按钮获取正版激活码</div>
             </div>
             <div class="dash-metric__month">
-                <span class="dash-metric__month-label">获取授权码</span>
+                <span class="dash-metric__month-label">获取激活码</span>
                 <button type="button" class="dash-version-btn" id="dashGetLicenseBtn">
                     <i class="fa fa-download"></i> 获取
                 </button>
@@ -400,28 +457,6 @@ try {
                 <span class="dash-metric__month-label">获取下载信息</span>
                 <button type="button" class="dash-version-btn" id="dashGetDownloadBtn">
                     <i class="fa fa-download"></i> 获取
-                </button>
-            </div>
-        </div>
-
-        <!-- 官方线路：当前选中的授权服务器线路，切换入口复用后台顶栏的线路菜单 -->
-        <div class="dash-metric dash-metric--action" style="--m-color: #0ea5e9; --m-soft: #ecfeff;">
-            <div class="dash-metric__head">
-                <span class="dash-metric__icon"><i class="fa fa-signal"></i></span>
-                <span class="dash-metric__label">官方线路</span>
-                <span class="dash-metric__official-tag">官方</span>
-            </div>
-            <div class="dash-metric__main">
-                <div class="dash-metric__value-row">
-                    <span class="dash-metric__today-value dash-line-name"><?= $esc($__curLineName) ?></span>
-                </div>
-                <div class="dash-metric__yesterday">用于程序版本 / 模板 / 插件的安装与更新</div>
-            </div>
-            <div class="dash-metric__month">
-                <!-- 左侧：当前线路的连接速度，由 admin_index_data 一起返回 -->
-                <span class="dash-metric__month-label dash-line-latency" id="dashLineLatency">--</span>
-                <button type="button" class="dash-version-btn" id="dashLineSwitchBtn">
-                    <i class="fa fa-exchange"></i> 切换
                 </button>
             </div>
         </div>
@@ -521,6 +556,59 @@ try {
  * 所有 class 前缀 .dash 避免与旧 .admin-* 样式冲突
  * ============================================================ */
 .admin-page { background: unset; }
+
+/* 关联激活提示：配色沿用未授权 Hero（深色底 + 琥珀/红光晕） */
+.dash-attach-note {
+    display: flex; align-items: center; gap: 12px;
+    /* 内容区自带 10px 内边距，下面也用 10px，上下间距一致 */
+    margin: 0 0 10px;
+    padding: 12px 16px;
+    background:
+        radial-gradient(420px 180px at 90% -30%, rgba(16, 185, 129, 0.2), transparent 60%),
+        radial-gradient(320px 160px at 0% 120%, rgba(14, 165, 233, 0.16), transparent 60%),
+        linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    box-shadow: 0 8px 30px rgba(15, 23, 42, 0.2);
+    color: #fff;
+}
+.dash-attach-note__icon {
+    width: 36px; height: 36px; flex-shrink: 0;
+    border-radius: 11px;
+    background: rgba(16, 185, 129, 0.16);
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    color: #34d399; font-size: 15px;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.dash-attach-note__body {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column; gap: 2px;
+}
+.dash-attach-note__body b {
+    font-size: 13px; font-weight: 600; color: #fff;
+    letter-spacing: 0.2px;
+}
+.dash-attach-note__body small { font-size: 11.5px; color: rgba(255, 255, 255, 0.72); }
+.dash-attach-note__tags {
+    flex-shrink: 0;
+    display: inline-flex; align-items: center; gap: 6px;
+}
+.dash-attach-note__tag,
+.dash-attach-note__level {
+    padding: 3px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 600;
+    white-space: nowrap;
+}
+.dash-attach-note__tag {
+    background: rgba(16, 185, 129, 0.18);
+    color: #6ee7b7;
+    box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.35);
+}
+/* 等级标签沿用系统版本卡的分级配色（VIP/SVIP/至尊） */
+.dash-attach-note__level.dash-level--none    { background: rgba(239, 68, 68, 0.18); color: #fca5a5; box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.35); }
+.dash-attach-note__level.dash-level--vip     { background: rgba(37, 99, 235, 0.2); color: #93c5fd; box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.4); }
+.dash-attach-note__level.dash-level--svip    { background: rgba(124, 58, 237, 0.22); color: #c4b5fd; box-shadow: inset 0 0 0 1px rgba(124, 58, 237, 0.4); }
+.dash-attach-note__level.dash-level--supreme { background: linear-gradient(135deg, #fbbf24, #d97706); color: #fff; box-shadow: 0 2px 8px rgba(217, 119, 6, 0.35); }
 
 /* ---------- 未授权引导 Hero（仅未授权时渲染） ---------- */
 .dash-hero {
@@ -625,6 +713,36 @@ try {
     margin-bottom: 8px;
 }
 .dash-activate__field { position: relative; }
+.dash-activate__field + .dash-activate__field { margin-top: 12px; }
+/* 验证码行：输入框右侧内嵌「获取验证码」 */
+.dash-activate__field--code .dash-activate__input { padding-right: 108px; }
+.dash-activate__code-btn {
+    position: absolute; top: 6px; right: 6px; bottom: 6px;
+    padding: 0 12px;
+    border: 0; border-radius: 8px;
+    background: #eef2ff; color: #4f46e5;
+    font-size: 12px; font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.dash-activate__code-btn:hover { background: #e0e7ff; }
+.dash-activate__code-btn:disabled { background: #f1f5f9; color: #9ca3af; cursor: not-allowed; }
+/* 激活按钮内嵌在输入框右侧 */
+.dash-activate__field--inline .dash-activate__input { padding-right: 118px; }
+.dash-activate__inline-btn {
+    position: absolute; top: 6px; right: 6px; bottom: 6px;
+    padding: 0 16px;
+    border: 0; border-radius: 8px;
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
+    color: #fff;
+    font-size: 13px; font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(79, 70, 229, 0.26);
+    transition: filter 0.15s ease;
+}
+.dash-activate__inline-btn:hover { filter: brightness(1.06); }
+.dash-activate__inline-btn:disabled { opacity: 0.65; cursor: not-allowed; box-shadow: none; }
 .dash-activate__field > i {
     position: absolute; left: 14px; top: 50%;
     transform: translateY(-50%);
@@ -763,7 +881,7 @@ try {
 }
 
 /* 运行模式：CLI 是「有常驻进程在消费队列」，绿色 + 呼吸灯（text-shadow 模拟光晕）；
-   FPM 是「随请求同步执行」，琥珀常亮 —— 它是一种正常模式，不是故障，所以不闪。 */
+   FPM 是「随请求同步执行」，冷蓝色常亮 —— 它是一种正常模式，不是故障，所以不闪。 */
 @keyframes dashServerBreath {
     0%, 100% {
         opacity: 1;
@@ -779,18 +897,45 @@ try {
     animation: dashServerBreath 2.4s ease-in-out infinite;
 }
 .dash-runmode--fpm {
-    color: #f59e0b !important;
+    color: #3b82f6 !important;
 }
 
-/* 官方线路卡：线路名比较长，缩小字号避免撑破卡片 */
-.dash-line-name {
-    font-size: 18px;
+/* ---------- 官方账号卡 ---------- */
+/* 卡片底色带一层很淡的靛蓝光晕，和普通指标卡区分开 */
+.dash-account-card {
+    background:
+        radial-gradient(240px 160px at 110% -30%, rgba(99, 102, 241, 0.12), transparent 70%),
+        #fff;
+    border-color: #e0e7ff;
 }
-/* 官方线路卡：连接速度分档配色（与顶栏线路菜单一致） */
-.dash-line-latency { font-variant-numeric: tabular-nums; }
-.dash-line-latency.is-ok   { color: #10b981; }
-.dash-line-latency.is-warn { color: #f59e0b; }
-.dash-line-latency.is-bad  { color: #ef4444; }
+.dash-account-card:hover {
+    border-color: #c7d2fe;
+    box-shadow:
+        0 4px 10px rgba(15, 23, 42, 0.05),
+        0 18px 36px rgba(99, 102, 241, 0.18);
+}
+/* 头部图标用渐变实心，别和其他卡一样只有浅底 */
+.dash-account-card .dash-metric__icon {
+    background: linear-gradient(135deg, #6366f1, #0ea5e9);
+    color: #fff;
+    box-shadow: 0 4px 10px rgba(99, 102, 241, 0.25);
+}
+/* 未登录：文字淡化，和已登录的绿色做区分 */
+.dash-account-offline { color: #9ca3af; }
+/* 底部登录状态：小圆点 + 文案 */
+.dash-account-status {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; color: #9ca3af;
+}
+.dash-account-status i {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #cbd5e1;
+}
+.dash-account-status.is-on { color: #10b981; }
+.dash-account-status.is-on i {
+    background: #10b981;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.14);
+}
 
 /* 环比 chip：绝对定位到大号数字右上角，不占居中计算空间 */
 .dash-ratio {
@@ -873,7 +1018,7 @@ try {
 }
 .dash-version-btn--alert:hover { background: linear-gradient(135deg, #e11d48, #be123c); }
 
-/* ---------- 附加操作卡：授权码 / 下载安装包 ---------- */
+/* ---------- 附加操作卡：激活码 / 下载安装包 ---------- */
 /* 右上角"官方"标签 */
 .dash-metric__official-tag {
     font-size: 11px; font-weight: 600;
@@ -882,46 +1027,98 @@ try {
     letter-spacing: 0.3px; flex-shrink: 0;
     box-shadow: inset 0 0 0 1px rgba(79, 70, 229, 0.15);
 }
-/* 下载源选择弹层（多源时弹出） */
-.dash-dl-wrap { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
-.dash-dl-item {
+/* ---------- 获取正版激活码弹窗 ---------- */
+.dash-buy { padding: 22px 24px 18px; }
+/* 外层已经有留白，hero 不再重复一大段 padding / 分隔线 */
+.dash-buy .dash-activate__hero {
+    padding: 4px 0 18px;
+    margin-bottom: 16px;
+    border-bottom: none;
+}
+.dash-buy .dash-activate__icon {
+    background: linear-gradient(135deg, #6366f1, #0ea5e9);
+    color: #fff;
+    box-shadow: 0 8px 20px rgba(99, 102, 241, 0.28);
+}
+/* 权益小标签 */
+.dash-buy__perks {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 6px;
+    margin-top: 14px;
+}
+.dash-buy__perks span {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 9px;
+    font-size: 11.5px; color: #4f46e5;
+    background: #eef2ff;
+    border-radius: 999px;
+}
+.dash-buy__perks i { font-size: 9px; }
+/* 渠道列表 */
+.dash-buy__list { display: flex; flex-direction: column; gap: 8px; }
+.dash-buy__item {
     display: flex; align-items: center; gap: 12px;
-    padding: 10px 14px;
-    border: 1px solid #e5e7eb; border-radius: 10px;
-    background: #fff; text-decoration: none; color: #111827;
-    transition: all 0.15s ease;
+    padding: 12px 14px;
+    border: 1px solid #e5e7eb; border-radius: 12px;
+    background: #fafbfc;
+    text-decoration: none;
+    transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
-.dash-dl-item:hover { background: #f9fafb; border-color: #f59e0b; color: #111827; transform: translateY(-1px); }
-.dash-dl-ico {
-    width: 34px; height: 34px; flex-shrink: 0;
-    border-radius: 8px;
-    background: #fffbeb; color: #f59e0b;
+.dash-buy__item:hover {
+    border-color: #a5b4fc;
+    background: #fff;
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.12);
+}
+.dash-buy__ico {
+    width: 36px; height: 36px; flex-shrink: 0;
+    border-radius: 10px;
+    background: #eef2ff; color: #6366f1;
     display: inline-flex; align-items: center; justify-content: center;
-    font-size: 14px;
+    font-size: 15px;
 }
-.dash-dl-body { flex: 1; min-width: 0; }
-.dash-dl-name { font-size: 13px; font-weight: 600; }
-.dash-dl-url {
-    font-size: 11px; color: #9ca3af;
+.dash-buy__body {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column; gap: 3px;
+}
+.dash-buy__name { font-size: 13.5px; font-weight: 600; color: #111827; }
+.dash-buy__url {
+    font-size: 11.5px; color: #9ca3af;
     font-family: 'JetBrains Mono', Consolas, Monaco, monospace;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    margin-top: 2px;
 }
-.dash-dl-arrow { color: #d1d5db; font-size: 12px; flex-shrink: 0; }
-.dash-dl-item:hover .dash-dl-arrow { color: #f59e0b; }
-/* 授权码卡复用同一套列表结构，配色跟随卡片主色（绿） */
-.dash-dl-item--license:hover { border-color: #10b981; }
-.dash-dl-item--license .dash-dl-ico { background: #ecfdf5; color: #10b981; }
-.dash-dl-item--license:hover .dash-dl-arrow { color: #10b981; }
-/* 兜底提示：身份标识没匹配到代理商时，页面顶部提示当前是官方通用配置 */
-.dash-dl-notice {
+.dash-buy__arrow {
+    flex-shrink: 0;
+    font-size: 12px; color: #cbd5e1;
+    transition: color 0.15s ease;
+}
+.dash-buy__item:hover .dash-buy__arrow { color: #6366f1; }
+/* 代理商兜底提示 */
+.dash-buy__notice {
     display: flex; align-items: center; gap: 6px;
-    padding: 8px 12px;
+    padding: 8px 12px; margin-bottom: 10px;
     font-size: 12px; color: #92400e;
     background: #fffbeb;
     border: 1px solid #fde68a;
     border-radius: 8px;
 }
+/* 空态 / 底部说明 */
+.dash-buy__empty {
+    padding: 34px 12px;
+    text-align: center;
+    font-size: 13px; color: #9ca3af;
+    background: #f8fafc;
+    border: 1px dashed #e5e7eb;
+    border-radius: 10px;
+}
+.dash-buy__empty i {
+    display: block; margin-bottom: 8px;
+    font-size: 24px; color: #d1d5db;
+}
+.dash-buy__note {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    margin-top: 16px;
+    font-size: 11.5px; color: #9ca3af;
+}
+
 
 /* 公告 / 广告空态 */
 .dash-announce__empty {
@@ -1744,19 +1941,6 @@ $(function () {
         });
         $list.html(html);
     }
-    // 官方线路卡：当前线路的连接速度（admin_index_data 顺带返回，null = 连不上）
-    function renderLineLatency(ms) {
-        var $el = $('#dashLineLatency');
-        if (!$el.length) return;
-        var v = parseInt(ms, 10);
-        $el.removeClass('is-ok is-warn is-bad');
-        if (ms === null || ms === undefined || isNaN(v) || v < 0) {
-            $el.addClass('is-bad').text('连接失败');
-            return;
-        }
-        // 分档配色与顶栏线路菜单一致：<150ms 绿 / 150-500ms 橙 / ≥500ms 红
-        $el.addClass(v < 150 ? 'is-ok' : (v < 500 ? 'is-warn' : 'is-bad')).text(v + ' ms');
-    }
     function renderVersion(data) {
         var $label = $('#dashVersionLabel');
         var $btn = $('#dashCheckUpdate');
@@ -1783,7 +1967,7 @@ $(function () {
         $('#dashNoticeList').html(dashRetryHtml());
         $('#dashAdList').html(dashRetryHtml());
     }
-    // 返回 jqXHR，调用方（授权码 / 下载卡片）可在失败后等它重试完再决定弹不弹
+    // 返回 jqXHR，调用方（激活码 / 下载卡片）可在失败后等它重试完再决定弹不弹
     function loadDashIndex() {
         if (__dashIndexLoading) return __dashIndexXhr;
         __dashIndexLoading = true;
@@ -1799,8 +1983,6 @@ $(function () {
                 renderDashFail();
                 return;
             }
-            // 连接速度随这次响应一起回来，即使上游业务数据失败也可能已经测到
-            renderLineLatency(resp.data.line_latency_ms);
             // 上游失败时 HTTP 仍是 200，但带 error、update 是空壳 —— 必须按失败处理，
             // 否则版本卡会误显示「当前已是最新版本」。
             if (dashDataFailed(resp.data)) {
@@ -2101,7 +2283,7 @@ $(function () {
     $('#dashActivateBtn').on('click', function () {
         if (typeof layui === 'undefined' || !layui.layer) return;
         var layer = layui.layer;
-        var idx = layer.open({
+        layer.open({
             type: 1,
             title: '立即激活',
             skin: 'admin-modal',
@@ -2115,14 +2297,12 @@ $(function () {
                         '<div class="dash-activate__sub">解锁专属模板 · 付费插件 · 应用商店 · 优先技术支持</div>' +
                     '</div>' +
                     '<label class="dash-activate__label" for="dashLicenseCode">授权许可证（License Key）</label>' +
-                    '<div class="dash-activate__field">' +
+                    '<div class="dash-activate__field dash-activate__field--inline">' +
                         '<i class="fa fa-key"></i>' +
                         '<input type="text" id="dashLicenseCode" class="dash-activate__input" ' +
                                'placeholder="请输入您的激活码" maxlength="64" autocomplete="off" spellcheck="false">' +
+                        '<button type="button" class="dash-activate__inline-btn" id="dashActivateSubmit">立即激活</button>' +
                     '</div>' +
-                    '<button type="button" class="dash-activate__submit" id="dashActivateSubmit">' +
-                        '立即激活<i class="fa fa-arrow-right"></i>' +
-                    '</button>' +
                     '<div class="dash-activate__foot">还没有激活码？' +
                         '<a href="javascript:void(0);" id="dashActivateGetCode">获取正版授权<i class="fa fa-arrow-right"></i></a>' +
                     '</div>' +
@@ -2130,8 +2310,8 @@ $(function () {
                 '</div>'
         });
 
+        // 只在上层叠加购买渠道弹窗，激活窗口保持打开，关掉购买弹窗后回来继续输入激活码
         $('#dashActivateGetCode').on('click', function () {
-            layer.close(idx);
             dashEnsureIndexData(openBuyLinksPopup);
         });
 
@@ -2175,43 +2355,70 @@ $(function () {
         }).focus();
     });
 
-    // 未授权 Hero 上的"获取激活码"按钮 → 与授权码卡片的「获取」完全一致：
+    // 未授权 Hero 上的"获取激活码"按钮 → 与激活码卡片的「获取」完全一致：
     // 用 admin_index_data 里已拿到的 buy_links 弹层，缺数据时先重拉（loading）。
     $('#dashGetLicense').on('click', function () {
         if (typeof layui === 'undefined' || !layui.layer) return;
         dashEnsureIndexData(openBuyLinksPopup);
     });
 
-    // ========== 附加操作卡（授权码 / 下载）==========
-    // 授权码卡：正常情况直接用首页初始化时已拉到的 buy_links 渲染，
+    // ========== 附加操作卡（激活码 / 下载）==========
+    // 激活码卡：正常情况直接用首页初始化时已拉到的 buy_links 渲染，
     // 不再打开 /admin/license.php?_popup=agent —— 那个 iframe 会再向上游请求一次 base-data；
     // 上次请求失败则点「获取」时重新请求接口，成功后再弹。
     function openBuyLinksPopup() {
         var links = __dashIndexData.buy_links || [];
-        var content;
+        var body;
         if (!links.length) {
-            content = '<div class="dash-announce__empty"><i class="fa fa-inbox"></i>暂无购买渠道</div>';
+            body = '<div class="dash-buy__empty"><i class="fa fa-inbox"></i>暂未提供购买渠道，请联系客服获取</div>';
         } else {
             var notice = __dashIndexData.used_fallback
-                ? '<div class="dash-dl-notice"><i class="fa fa-info-circle"></i> 当前身份标识未匹配到代理商，以下为官方通用配置</div>'
+                ? '<div class="dash-buy__notice"><i class="fa fa-info-circle"></i>' +
+                  '当前身份标识未匹配到代理商，以下为官方通用配置</div>'
                 : '';
-            content = '<div class="dash-dl-wrap">' + notice + links.map(function (u) {
-                return '<a href="' + escapeHtml(u.url) + '" target="_blank" class="dash-dl-item dash-dl-item--license">' +
-                       '<span class="dash-dl-ico"><i class="fa fa-shopping-cart"></i></span>' +
-                       '<div class="dash-dl-body">' +
-                           '<div class="dash-dl-name">' + escapeHtml(u.name || u.url) + '</div>' +
-                           '<div class="dash-dl-url">' + escapeHtml(u.url) + '</div>' +
-                       '</div>' +
-                       '<i class="fa fa-arrow-right dash-dl-arrow"></i></a>';
+            body = notice + '<div class="dash-buy__list">' + links.map(function (u) {
+                return '<a href="' + escapeHtml(u.url) + '" target="_blank" rel="noopener noreferrer" class="dash-buy__item">' +
+                           '<span class="dash-buy__ico"><i class="fa fa-shopping-cart"></i></span>' +
+                           '<span class="dash-buy__body">' +
+                               '<span class="dash-buy__name">' + escapeHtml(u.name || u.url) + '</span>' +
+                               '<span class="dash-buy__url">' + escapeHtml(u.url) + '</span>' +
+                           '</span>' +
+                           '<i class="fa fa-arrow-right dash-buy__arrow"></i>' +
+                       '</a>';
             }).join('') + '</div>';
         }
+
+        // 底部联系方式：取自 admin_index_data 的 contact（没有就不显示这行）
+        var contact = __dashIndexData.contact || {};
+        var contactParts = [];
+        if (contact.qq_service) contactParts.push('客服QQ：' + escapeHtml(contact.qq_service));
+        if (contact.qq_group)   contactParts.push('官方交流QQ群：' + escapeHtml(contact.qq_group));
+        var contactNote = contactParts.length
+            ? '<div class="dash-buy__note"><i class="fa fa-headphones"></i>' +
+              '有任何问题，请联系' + contactParts.join('　') + '</div>'
+            : '';
+
         layui.layer.open({
             type: 1,
-            title: '获取正版授权码',
+            title: '获取正版激活码',
             skin: 'admin-modal',
             area: [window.innerWidth >= 640 ? '460px' : '94%', 'auto'],
             shadeClose: true,
-            content: content
+            content:
+                '<div class="dash-buy">' +
+                    '<div class="dash-activate__hero">' +
+                        '<div class="dash-activate__icon"><i class="fa fa-shopping-bag"></i></div>' +
+                        '<div class="dash-activate__title">获取正版激活码</div>' +
+                        '<div class="dash-activate__sub">选择下方渠道购买，拿到激活码后回到本页激活</div>' +
+                        '<div class="dash-buy__perks">' +
+                            '<span><i class="fa fa-check"></i>专属模板</span>' +
+                            '<span><i class="fa fa-check"></i>付费插件</span>' +
+                            '<span><i class="fa fa-check"></i>应用商店</span>' +
+                            '<span><i class="fa fa-check"></i>优先支持</span>' +
+                        '</div>' +
+                    '</div>' +
+                    body + contactNote +
+                '</div>'
         });
     }
     $('#dashGetLicenseBtn').on('click', function () {
@@ -2224,26 +2431,49 @@ $(function () {
     // 下载安装包：从 admin_index_data 返回的 download_links 取下载源，始终用弹层展示，由用户点具体条目后再打开
     function openDownloadPopup() {
         var urls = __dashIndexData.download_links || [];
+        var body;
         if (!urls.length) {
-            layui.layer.msg('暂未提供下载链接，请联系客服获取');
-            return;
+            body = '<div class="dash-buy__empty"><i class="fa fa-inbox"></i>暂未提供下载链接，请联系客服获取</div>';
+        } else {
+            body = '<div class="dash-buy__list">' + urls.map(function (u) {
+                return '<a href="' + escapeHtml(u.url) + '" target="_blank" rel="noopener noreferrer" class="dash-buy__item">' +
+                           '<span class="dash-buy__ico"><i class="fa fa-download"></i></span>' +
+                           '<span class="dash-buy__body">' +
+                               '<span class="dash-buy__name">' + escapeHtml(u.name || u.url) + '</span>' +
+                               '<span class="dash-buy__url">' + escapeHtml(u.url) + '</span>' +
+                           '</span>' +
+                           '<i class="fa fa-arrow-right dash-buy__arrow"></i>' +
+                       '</a>';
+            }).join('') + '</div>';
         }
-        var items = urls.map(function (u) {
-            return '<a href="' + escapeHtml(u.url) + '" target="_blank" class="dash-dl-item">' +
-                   '<span class="dash-dl-ico"><i class="fa fa-download"></i></span>' +
-                   '<div class="dash-dl-body">' +
-                       '<div class="dash-dl-name">' + escapeHtml(u.name) + '</div>' +
-                       '<div class="dash-dl-url">' + escapeHtml(u.url) + '</div>' +
-                   '</div>' +
-                   '<i class="fa fa-arrow-right dash-dl-arrow"></i></a>';
-        }).join('');
+
+        // 版本号来自 admin_index_data；取不到就不显示对应小标签
+        var version = String(__dashIndexData.current_version || '').replace(/^v/i, '');
+        var versionChip = version !== ''
+            ? '<span><i class="fa fa-tag"></i>当前版本 v' + escapeHtml(version) + '</span>'
+            : '';
+
         layui.layer.open({
             type: 1,
-            title: urls.length === 1 ? '下载安装包' : '选择下载源',
+            title: '下载安装包',
             skin: 'admin-modal',
             area: [window.innerWidth >= 640 ? '460px' : '94%', 'auto'],
             shadeClose: true,
-            content: '<div class="dash-dl-wrap">' + items + '</div>'
+            content:
+                '<div class="dash-buy">' +
+                    '<div class="dash-activate__hero">' +
+                        '<div class="dash-activate__icon"><i class="fa fa-cloud-download"></i></div>' +
+                        '<div class="dash-activate__title">下载安装包</div>' +
+                        '<div class="dash-activate__sub">选择下载源获取 EMSHOP 官方完整安装包</div>' +
+                        '<div class="dash-buy__perks">' +
+                            versionChip +
+                            '<span><i class="fa fa-check"></i>官方原版</span>' +
+                            '<span><i class="fa fa-archive"></i>完整安装包</span>' +
+                        '</div>' +
+                    '</div>' +
+                    body +
+                    '<div class="dash-buy__note"><i class="fa fa-info-circle"></i>升级前请先备份网站文件与数据库</div>' +
+                '</div>'
         });
     }
     $('#dashGetDownloadBtn').on('click', function () {
@@ -2251,14 +2481,68 @@ $(function () {
         dashEnsureIndexData(openDownloadPopup);
     });
 
-    // 官方线路卡：复用后台顶栏的线路切换菜单，不另做一套。
-    // stopPropagation 是必须的 —— 顶栏那边有「点击外部关闭」的 document 监听，
-    // 不拦住的话本次点击冒泡上去会把刚展开的菜单立刻关掉。
-    $('#dashLineSwitchBtn').on('click', function (e) {
-        e.stopPropagation();
-        if (!$('#adminLineDropdown').hasClass('is-open')) {
-            $('#adminLineSwitch .admin-line-switch__trigger').trigger('click');
-        }
+    // 官方账号卡：登录 / 注册统一用独立 iframe 弹窗（admin/license.php?_popup=official_login）
+    function openOfficialAuthPopup(initialTab) {
+        if (typeof layui === 'undefined' || !layui.layer) return;
+
+        var winW = window.innerWidth || document.documentElement.clientWidth;
+        var winH = window.innerHeight || document.documentElement.clientHeight;
+        var width = Math.max(320, Math.min(440, winW - 24));
+        var height = Math.max(360, Math.min(520, winH - 40));
+
+        window.__officialLoginDone = function () {
+            window.location.reload();
+        };
+
+        var index = layui.layer.open({
+            type: 2,
+            title: '官方账号',
+            skin: 'admin-modal',
+            area: [width + 'px', height + 'px'],
+            shadeClose: true,
+            content: '/admin/license.php?_popup=official_login' +
+                     (initialTab === 'register' ? '&tab=register' : ''),
+            end: function () {
+                try { delete window.__officialLoginResize; } catch (e) {}
+            }
+        });
+
+        /* 登录框按内容高度回调：切换登录方式 / 注册时同步调整 layer 高度 */
+        window.__officialLoginResize = function (contentHeight) {
+            try {
+                var $layero = $('#layui-layer' + index);
+                if (!$layero.length) return;
+
+                var titleH = $layero.find('.layui-layer-title').outerHeight() || 42;
+                var maxH = window.innerHeight - 40;
+                var h = Math.min(Math.max(320, contentHeight + titleH), maxH);
+                var contentH = Math.max(200, h - titleH);
+                var top = Math.max(10, (window.innerHeight - h) / 2);
+
+                $layero.css({ height: h + 'px', top: top + 'px' });
+                $layero.children('.layui-layer-content').css('height', contentH + 'px');
+                $layero.find('iframe').css('height', contentH + 'px');
+            } catch (e) {}
+        };
+    }
+
+    $('#dashOfficialLogin').on('click', function () { openOfficialAuthPopup('login'); });
+
+    // 管理：激活码 / 账号信息 / 退出登录都在这个大 iframe 里
+    $('#dashOfficialManage').on('click', function () {
+        if (typeof layui === 'undefined' || !layui.layer) return;
+        layui.layer.open({
+            type: 2,
+            title: '管理官方账号',
+            skin: 'admin-modal',
+            maxmin: false,
+            area: [
+                window.innerWidth >= 1000 ? '820px' : '94%',
+                window.innerHeight >= 760 ? '660px' : '88%'
+            ],
+            shadeClose: true,
+            content: '/admin/license.php?_popup=account'
+        });
     });
 
     // 销售趋势折线图：初始化空图表，再用 AJAX 拉数据 + 按日期范围切换

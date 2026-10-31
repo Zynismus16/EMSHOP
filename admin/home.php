@@ -57,11 +57,6 @@ if ((string) Input::get('_action', '') === 'admin_index_data') {
     }
     $latency = $data !== null ? (int) round((microtime(true) - $start) * 1000) : -1;
 
-    // 当前线路的连接速度（首页「官方线路」卡）：直接用上面这次请求的往返耗时。
-    // 与「获取信息」同一个接口、同一条线路，不再额外发探测请求。
-    // 数据没拿到（请求失败）时按失败处理，避免出现"数据失败但速度正常"的割裂。
-    $lineLatency = $data !== null ? LicenseClient::lastRequestLatencyMs() : null;
-
     // 注意：这里的 authorized / license_type 只作为展示数据回给前端，
     // **不用来改本地授权状态** —— 授权判定只走
     // LicenseService::revalidateCurrent()（api/open/v1/em/license/status）。
@@ -82,7 +77,6 @@ if ((string) Input::get('_action', '') === 'admin_index_data') {
         'contact'          => [],
     ]) + [
         'latency_ms'      => $latency,
-        'line_latency_ms' => $lineLatency,
         'error'           => $error,
         'current_version' => EM_VERSION,
     ]);

@@ -14,6 +14,10 @@ $user = $adminUser;
 $siteName = Config::get('sitename', 'EMSHOP');
 $csrfToken = Csrf::token();
 
+/* 应用商店的数据拉取必须带官方账号身份：没登录就锁页、不让拉 */
+$officialAccount  = LicenseService::officialAccount();
+$officialLoggedIn = $officialAccount !== [];
+
 /**
  * 安装/更新前预检：目标路径必须可创建或所在目录可写。
  * 若不可写则直接返回明确文案，避免 zip/解压/curl 等底层错误难以理解。
@@ -281,8 +285,48 @@ if (Request::isPost() && (string) Input::post('_action', '') === 'app_buy') {
     }
 }
 
+// AJAX：站内扫码支付 —— 取这一单的支付宝当面付二维码
+if (Request::isPost() && (string) Input::post('_action', '') === 'app_pay_qrcode') {
+    if (!Csrf::validate((string) Input::post('csrf_token', ''))) {
+        Response::error('请求已失效，请刷新页面后重试');
+    }
+    $orderNo = trim((string) Input::post('order_no', ''));
+    if ($orderNo === '') {
+        Response::error('订单号不能为空');
+    }
+    $channelId = (int) Input::post('channel_id', 0);
+    try {
+        $data = LicenseClient::appOrderQrcode($orderNo, $channelId);
+        $data['csrf_token'] = Csrf::refresh();
+        Response::success('', $data);
+    } catch (Throwable $e) {
+        Response::error($e->getMessage());
+    }
+}
+
+// AJAX：站内扫码支付 —— 轮询支付结果（服务端会主动问一次支付宝）
+if (Request::isPost() && (string) Input::post('_action', '') === 'app_order_status') {
+    if (!Csrf::validate((string) Input::post('csrf_token', ''))) {
+        Response::error('请求已失效，请刷新页面后重试');
+    }
+    $orderNo = trim((string) Input::post('order_no', ''));
+    if ($orderNo === '') {
+        Response::error('订单号不能为空');
+    }
+    try {
+        // 轮询很频繁，不轮换 CSRF（否则前端拿到的 token 会和并发的请求互相打脸）
+        Response::success('', LicenseClient::appOrderStatus($orderNo));
+    } catch (Throwable $e) {
+        Response::error($e->getMessage());
+    }
+}
+
 // AJAX：按 id 拉取单个应用详情 + 支付方式（/api/app_detail.php），购买弹窗一次拉齐
 if ((string) Input::get('_action', '') === 'app_detail') {
+    if (!$officialLoggedIn) {
+        Response::error('请先登录官方账号后再使用应用商店');
+    }
+
     $appId = (int) Input::get('id', 0);
     if ($appId <= 0) {
         Response::error('应用ID不能为空');
@@ -295,9 +339,10 @@ if ((string) Input::get('_action', '') === 'app_detail') {
     if (!in_array($tab, ['main', 'merchant'], true)) $tab = 'main';
     try {
         // 阶段 8:走拆分后的 mainAppDetail / merchantAppDetail
+        $officialToken = LicenseService::officialAccountToken();
         $data = $tab === 'merchant'
-            ? LicenseClient::merchantAppDetail($appId, $emkey, $host)
-            : LicenseClient::mainAppDetail($appId, $emkey, $host);
+            ? LicenseClient::merchantAppDetail($appId, $emkey, $host, $officialToken)
+            : LicenseClient::mainAppDetail($appId, $emkey, $host, $officialToken);
         Response::success('', $data);
     } catch (Throwable $e) {
         Response::error($e->getMessage());
@@ -311,7 +356,14 @@ if ((string) Input::get('_action', '') === 'app_detail') {
 // list_mode=purchased → 仍走旧接口 app_purchased_list.php（新接口没有"已购买"这个概念），
 //                       返回结构在下面适配成 app-list 的信封，前端只认一套
 if ((string) Input::get('_action', '') === 'list') {
+    if (!$officialLoggedIn) {
+        Response::error('请先登录官方账号后再使用应用商店');
+    }
+
     LicenseService::revalidateCurrent(); // 获取最新授权状态
+
+    $officialToken = LicenseService::officialAccountToken();
+    $accountName   = (string) ($officialAccount['username'] ?? '');
     // 取当前激活码和域名用于服务端计算 my_price（未激活时 emkey 为空，服务端会按 VIP 价返回）
     $licenseRow = LicenseService::currentLicense();
     $emkey = $licenseRow ? (string) ($licenseRow['license_code'] ?? '') : '';
@@ -343,8 +395,20 @@ if ((string) Input::get('_action', '') === 'list') {
         $common['category_id'] = (int) $categoryId;
     }
     $params = $isPurchasedList
-        ? $common + ['pageNum' => min(100, $limit), 'emkey' => $emkey, 'host' => $host]
-        : $common + ['per_page' => min(50, $limit), 'domain' => $host, 'code' => $emkey];
+        ? $common + [
+            'pageNum' => min(100, $limit),
+            'emkey'   => $emkey,
+            'host'    => $host,
+            'source'  => 'admin',
+            'account' => $accountName,
+        ]
+        : $common + [
+            'per_page' => min(50, $limit),
+            'domain'   => $host,
+            'code'     => $emkey,
+            'source'   => 'admin',
+            'account'  => $accountName,
+        ];
 
     // 已购买列表依赖 emkey；未激活时直接返回空页，避免打断页面
     if ($isPurchasedList && $emkey === '') {
@@ -359,19 +423,21 @@ if ((string) Input::get('_action', '') === 'list') {
     try {
         if ($isPurchasedList) {
             $legacy = $tab === 'merchant'
-                ? LicenseClient::merchantAppPurchasedList($params)
-                : LicenseClient::mainAppPurchasedList($params);
+                ? LicenseClient::merchantAppPurchasedList($params, $officialToken)
+                : LicenseClient::mainAppPurchasedList($params, $officialToken);
             // 旧接口的字段名/分页结构与 app-list 不同，在这里适配一次，前端只认一套
             $result = appstore_legacy_envelope($legacy);
         } else {
             // scope 由镜像方法注入：mainAppList → 'main' / merchantAppList → 'branch'
-            $result = $tab === 'merchant' ? LicenseClient::merchantAppList($params) : LicenseClient::mainAppList($params);
+            $result = $tab === 'merchant'
+                ? LicenseClient::merchantAppList($params, $officialToken)
+                : LicenseClient::mainAppList($params, $officialToken);
         }
 
         // 这次列表是带着本地激活码去问的：服务端明确回未授权 → 清空本地授权
         // （码不存在 / 已作废 / 域名对不上都是这个值，口径与 license/status 一致）
         // 前提是**确实带了码**：没带码时服务端照样回 false，那不是「码失效」，
-        // 不能拿它清本地（例如用未授权的域名进后台时 currentLicense() 本就返 null）
+        // 不能拿它清本地（未激活时 local 就没有码，走不到这个分支）
         if ($emkey !== '' && ($result['license']['authorized'] ?? null) === false) {
             LicenseService::clearLocalAuthorization();
         }
