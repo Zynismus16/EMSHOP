@@ -1775,7 +1775,6 @@ $(function () {
     var __dashIndexData = null;
     var __dashIndexLoading = false;
     var __dashIndexXhr = null;
-    var __dashLicenseActivated = <?= $__licenseActivated ? 'true' : 'false' ?>;
 
     // 公告 / 推广的加载骨架（重试时恢复成和首屏一致的占位）
     var DASH_SKELETON = (function () {
@@ -2019,10 +2018,6 @@ $(function () {
             loadDashIndex();
             return;
         }
-        if (!__dashLicenseActivated) {
-            layui.layer.msg('未激活版本不支持在线升级');
-            return;
-        }
         // package_url 非空 = 服务端给了增量包且当前版本满足 min_version，可走在线升级
         if (u.package_url) {
             startUpdateWizard(u);
@@ -2041,10 +2036,6 @@ $(function () {
     // 在线升级向导：6 步顺序执行，每步独立 AJAX（不备份、不保留升级包）
     // ==================================================================
     function startUpdateWizard(target) {
-        if (!__dashLicenseActivated) {
-            layui.layer.msg('未激活版本不支持在线升级');
-            return;
-        }
         // target 是服务端 admin_index_data 的 update 对象，必要字段：
         //   version / package_url / min_version（package_url 已由服务端保证满足 min_version）
         var STEPS = [

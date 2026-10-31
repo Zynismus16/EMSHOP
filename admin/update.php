@@ -35,10 +35,6 @@ if (!Csrf::validate((string) Input::post('csrf_token', ''))) {
     Response::error('请求已失效，请刷新页面后重试');
 }
 
-if (!LicenseService::isActivated()) {
-    Response::error('未激活版本不支持在线升级');
-}
-
 $action = (string) Input::post('_action', '');
 
 try {
