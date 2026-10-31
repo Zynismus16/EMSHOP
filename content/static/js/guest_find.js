@@ -201,8 +201,8 @@ var GuestFind = (function () {
             $('#findOrderResults').hide();
         });
 
-        // tab2：凭据查单（无订单号；联系方式/订单密码任一或组合）
-        // 前端不做必填校验，让后端统一返回错误消息
+        // tab2：凭据查单（无订单号）：后台开启的联系方式/订单密码均为必填项，
+        // 两项都开启时都要填；前端不做必填校验，让后端统一返回错误消息
         $doc.on('click.findGuestFind', '#credentialsSubmitBtn', function () {
             submitFind('credentials', {
                 mode: 'credentials',

@@ -9,9 +9,9 @@ require_once __DIR__ . '/global_public.php';
  * 不继承 user 中心模板：自带最简 HTML 框架，仅引入 layui / 站点基础 CSS 与 guest_find.js。
  *
  * 查询模式：
- *   1. token    —— 用浏览器 Cookie 里的 guest_token 列出最近 10 条订单（含游客单与登录用户在本机下的单）
- *   2. contact  —— 凭联系方式等查单（与订单密码组合见下方）
- *   3. password —— 凭订单密码等查单
+ *   1. token       —— 用浏览器 Cookie 里的 guest_token 列出最近 10 条订单（含游客单与登录用户在本机下的单）
+ *   2. credentials —— 凭联系方式 / 订单密码查单：后台开启哪几项就必须填哪几项，都填时 AND 精确匹配
+ *   3. orderno     —— 凭订单编号查单
  *
  * 响应：所有 POST 都返回 JSON（列白名单脱敏，不带 order_password、admin_remark、内部 payment_*）。
  * 列表结果里的 order_goods 只带列表展示所需字段，不含发货内容（卡密）——发货内容可能上百万字符，
@@ -139,18 +139,22 @@ if (Request::isPost()) {
 
         } elseif ($mode === 'credentials') {
             // —— tab2：凭据查单（无订单号）
-            // 联系方式 / 订单密码 至少填一项；都填时 AND 精确匹配
-            if ($contactQuery === '' && $orderPassword === '') {
-                throw new RuntimeException('请输入查单凭据');
-            }
+            // 必填口径与下单页一致：后台开启了哪几项，查单就必须填哪几项；
+            // 两项都开启时两项都必填，且都填时 AND 精确匹配。
             if ($contactQuery !== '' && !$gfConfig['contact_enabled']) {
                 throw new RuntimeException('联系方式查单未开启');
             }
             if ($orderPassword !== '' && !$gfConfig['password_enabled']) {
                 throw new RuntimeException('订单密码查单未开启');
             }
+            if (!empty($gfConfig['contact_enabled']) && $contactQuery === '') {
+                throw new RuntimeException('请输入' . $gfConfig['contact_type_label']);
+            }
+            if (!empty($gfConfig['password_enabled']) && $orderPassword === '') {
+                throw new RuntimeException('请输入订单密码');
+            }
 
-            // 先用 order_password 精确过滤（如填了）；联系方式直接在 SQL 中参与模糊匹配
+            // 已填项按 AND 精确过滤：order_password 精确匹配；联系方式同样精确匹配
             $where = [];
             $params = [];
             if ($orderPassword !== '') {
