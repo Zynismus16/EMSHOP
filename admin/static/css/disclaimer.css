@@ -1,0 +1,327 @@
+/* ================================================
+   免责协议签署弹层
+   仅在未签署当前协议版本时加载（admin/view/index.php 条件引入）
+   ================================================ */
+
+.em-disclaimer {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000; /* 高于 layui layer，避免被后台其它弹窗盖住 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(17, 24, 39, 0.55);
+    box-sizing: border-box;
+}
+
+.em-disclaimer *,
+.em-disclaimer *::before,
+.em-disclaimer *::after {
+    box-sizing: border-box;
+}
+
+.em-disclaimer__dialog {
+    display: flex;
+    flex-direction: column;
+    width: min(760px, 100%);
+    max-height: 86vh;
+    max-height: 86dvh;
+    background: #fff;
+    border-radius: 14px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22);
+    overflow: hidden;
+}
+
+.em-disclaimer__head {
+    flex: none;
+    padding: 20px 24px 14px;
+    border-bottom: 1px solid #eef0f3;
+}
+
+.em-disclaimer__head h3 {
+    margin: 0 0 6px;
+    font-size: 18px;
+    color: #1f2937;
+}
+
+.em-disclaimer__head p {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #6b7280;
+}
+
+.em-disclaimer__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding: 18px 24px;
+    font-size: 14px;
+    line-height: 1.8;
+    color: #374151;
+}
+
+.em-disclaimer__body h4 {
+    margin: 16px 0 6px;
+    font-size: 14px;
+    color: #1f2937;
+}
+
+.em-disclaimer__body h4:first-child {
+    margin-top: 0;
+}
+
+.em-disclaimer__body p {
+    margin: 0 0 10px;
+}
+
+.em-disclaimer__body p:last-child {
+    margin-bottom: 0;
+}
+
+.em-disclaimer__foot {
+    flex: none;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 14px 24px;
+    border-top: 1px solid #eef0f3;
+    background: #fafbfc;
+}
+
+.em-disclaimer__check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: auto;
+    font-size: 14px;
+    color: #374151;
+    cursor: pointer;
+    user-select: none;
+}
+
+.em-disclaimer__check input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: #2563eb;
+}
+
+.em-disclaimer__btn {
+    flex: none;
+    min-width: 128px;
+    padding: 9px 22px;
+    border: 0;
+    border-radius: 8px;
+    background: #2563eb;
+    color: #fff;
+    font-size: 14px;
+    line-height: 1.4;
+    cursor: pointer;
+    transition: background-color 0.15s;
+}
+
+.em-disclaimer__btn:hover:not(:disabled) {
+    background: #1d4ed8;
+}
+
+.em-disclaimer__btn:disabled {
+    background: #c7d2fe;
+    cursor: not-allowed;
+}
+
+.em-disclaimer__error {
+    flex-basis: 100%;
+    font-size: 13px;
+    line-height: 1.4;
+    color: #dc2626;
+}
+
+.em-disclaimer__error:empty {
+    display: none;
+}
+
+@media (max-width: 640px) {
+    .em-disclaimer {
+        padding: 10px;
+    }
+
+    .em-disclaimer__dialog {
+        max-height: 92vh;
+        max-height: 92dvh;
+        border-radius: 12px;
+    }
+
+    .em-disclaimer__head {
+        padding: 16px 16px 10px;
+    }
+
+    .em-disclaimer__head h3 {
+        font-size: 16px;
+    }
+
+    .em-disclaimer__body {
+        padding: 14px 16px;
+        font-size: 13px;
+        line-height: 1.75;
+    }
+
+    .em-disclaimer__foot {
+        padding: 12px 16px;
+    }
+
+    .em-disclaimer__btn {
+        width: 100%;
+        min-width: 0;
+    }
+}
+
+/* ================================================
+   免责协议查看页（/admin/disclaimer.php）
+   ================================================ */
+
+.em-license-page {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 20px 16px 40px;
+}
+
+.em-license-card {
+    background: #fff;
+    border: 1px solid #eef0f3;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.em-license-card__head {
+    padding: 20px 24px 14px;
+    border-bottom: 1px solid #eef0f3;
+}
+
+.em-license-card__head h2 {
+    margin: 0 0 6px;
+    font-size: 18px;
+    color: #1f2937;
+}
+
+.em-license-card__head p {
+    margin: 0;
+    font-size: 13px;
+    color: #6b7280;
+}
+
+.em-license-badge {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    line-height: 18px;
+    vertical-align: 1px;
+}
+
+.em-license-badge.is-signed {
+    background: #ecfdf5;
+    color: #047857;
+}
+
+.em-license-badge.is-unsigned {
+    background: #fff7ed;
+    color: #c2410c;
+}
+
+.em-license-card__body {
+    padding: 18px 24px;
+    font-size: 14px;
+    line-height: 1.8;
+    color: #374151;
+}
+
+.em-license-card__body h4 {
+    margin: 16px 0 6px;
+    font-size: 14px;
+    color: #1f2937;
+}
+
+.em-license-card__body h4:first-child {
+    margin-top: 0;
+}
+
+.em-license-card__body p {
+    margin: 0 0 10px;
+}
+
+.em-license-card__body p:last-child {
+    margin-bottom: 0;
+}
+
+.em-license-card__record {
+    padding: 16px 24px 20px;
+    border-top: 1px solid #eef0f3;
+    background: #fafbfc;
+}
+
+.em-license-card__record h4 {
+    margin: 0 0 10px;
+    font-size: 14px;
+    color: #1f2937;
+}
+
+.em-license-record {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px 24px;
+    margin: 0;
+}
+
+.em-license-record dt {
+    margin-bottom: 2px;
+    font-size: 12px;
+    color: #9ca3af;
+}
+
+.em-license-record dd {
+    margin: 0;
+    font-size: 14px;
+    color: #374151;
+    word-break: break-all;
+}
+
+.em-license-empty {
+    margin: 0;
+    font-size: 13px;
+    color: #6b7280;
+}
+
+@media (max-width: 640px) {
+    .em-license-page {
+        padding: 12px 10px 28px;
+    }
+
+    .em-license-card__head {
+        padding: 16px 16px 10px;
+    }
+
+    .em-license-card__head h2 {
+        font-size: 16px;
+    }
+
+    .em-license-card__body {
+        padding: 14px 16px;
+        font-size: 13px;
+        line-height: 1.75;
+    }
+
+    .em-license-card__record {
+        padding: 14px 16px 16px;
+    }
+
+    .em-license-record {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+}

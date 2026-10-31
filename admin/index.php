@@ -30,6 +30,27 @@ if ((string) Input::post('_action', '') === 'clear_cache') {
     Response::success('缓存已清空');
 }
 
+// 免责协议签署：记录协议版本、签署管理员、时间与 IP
+if ((string) Input::get('_action', '') === 'disclaimer_accept') {
+    adminRequireLogin();
+    if (!Csrf::validate((string) Input::post('csrf_token', ''))) {
+        Response::error('请求已失效，请刷新页面后重试');
+    }
+    if ((string) Input::post('agree', '0') !== '1') {
+        Response::error('请先阅读并同意免责协议');
+    }
+
+    $saved = DisclaimerService::accept(
+        (int) $adminUser['id'],
+        (string) $adminUser['username'],
+        RateLimit::clientIp()
+    );
+    if (!$saved) {
+        Response::error('签署记录保存失败，请稍后重试');
+    }
+    Response::success('已签署');
+}
+
 // 插件动作分发：允许插件通过钩子处理自定义后台 action，避免在核心代码中写插件逻辑
 $action = (string) Input::get('_action', '');
 if ($action !== '' && $action !== 'clear_cache') {

@@ -3,6 +3,9 @@ if (!defined('EM_ROOT')) {
     exit('Access Denied');
 }
 $csrfToken = Csrf::token();
+
+// 未签署免责协议时强制弹出签署窗（演示模式不弹：后台写操作被禁用，签了也存不进去）
+$emDisclaimerShow = (!defined('EM_DEMO_MODE') || !EM_DEMO_MODE) && !DisclaimerService::accepted();
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -20,6 +23,7 @@ $csrfToken = Csrf::token();
     <link rel="stylesheet" href="/admin/static/css/admin.css">
     <link rel="stylesheet" href="/admin/static/css/admin-modal.css">
     <link rel="stylesheet" href="/admin/static/css/style.css">
+    <link rel="stylesheet" href="/admin/static/css/disclaimer.css">
     <link rel="stylesheet" href="/content/static/css/em-toast.css">
     <script src="/content/static/lib/jquery.min.3.5.1.js"></script>
     <script src="/content/static/lib/layui-v2.13.5/layui/layui.js"></script>
@@ -251,6 +255,7 @@ $csrfToken = Csrf::token();
                         <a href="/admin/currency.php" data-pjax="#adminContent" class="admin-menu-item"><?= t('货币配置'); ?></a>
                         <a href="/admin/attachment.php" data-pjax="#adminContent" class="admin-menu-item"><?= t('资源管理'); ?></a>
                         <a href="/admin/system_log.php" data-pjax="#adminContent" class="admin-menu-item"><?= t('系统日志'); ?></a>
+                        <a href="/admin/disclaimer.php" data-pjax="#adminContent" class="admin-menu-item"><?= t('免责协议'); ?></a>
                     </div>
                 </div>
 
@@ -510,6 +515,96 @@ $(function () {
     });
 });
 </script>
+
+<?php if ($emDisclaimerShow): ?>
+<!-- 免责协议签署弹层：未签署当前版本时强制显示，签署成功后才移除 -->
+<div class="em-disclaimer" id="emDisclaimer">
+    <div class="em-disclaimer__dialog" role="dialog" aria-modal="true" aria-labelledby="emDisclaimerTitle">
+        <div class="em-disclaimer__head">
+            <h3 id="emDisclaimerTitle">免责声明与使用协议</h3>
+            <p>请完整阅读以下条款，同意后方可继续使用后台。签署后将记录协议版本、签署时间、IP 与管理员账号。</p>
+        </div>
+        <div class="em-disclaimer__body">
+            <?php include __DIR__ . '/disclaimer_content.php'; ?>
+        </div>
+        <div class="em-disclaimer__foot">
+            <label class="em-disclaimer__check">
+                <input type="checkbox" id="emDisclaimerAgree">
+                <span>我已阅读并同意以上全部条款</span>
+            </label>
+            <button type="button" class="em-disclaimer__btn" id="emDisclaimerAccept" disabled>同意并继续</button>
+            <div class="em-disclaimer__error" id="emDisclaimerError"></div>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var mask = document.getElementById('emDisclaimer');
+    var agree = document.getElementById('emDisclaimerAgree');
+    var btn = document.getElementById('emDisclaimerAccept');
+    var errorEl = document.getElementById('emDisclaimerError');
+    if (!mask || !agree || !btn) {
+        return;
+    }
+
+    // 弹层打开期间锁住背景滚动；Esc 不允许关闭
+    document.body.style.overflow = 'hidden';
+    function escGuard(e) {
+        if (e.key === 'Escape' || e.keyCode === 27) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    }
+    document.addEventListener('keydown', escGuard, true);
+
+    function closeMask() {
+        document.removeEventListener('keydown', escGuard, true);
+        document.body.style.overflow = '';
+        if (mask.parentNode) {
+            mask.parentNode.removeChild(mask);
+        }
+    }
+
+    agree.addEventListener('change', function () {
+        btn.disabled = !agree.checked;
+        if (agree.checked) {
+            errorEl.textContent = '';
+        }
+    });
+
+    btn.addEventListener('click', function () {
+        if (!agree.checked || btn.disabled) {
+            return;
+        }
+        btn.disabled = true;
+        btn.textContent = '提交中…';
+        errorEl.textContent = '';
+
+        $.ajax({
+            url: '/admin/index.php?_action=disclaimer_accept',
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                csrf_token: window.adminCsrfToken,
+                agree: '1'
+            }
+        }).done(function (res) {
+            if (res && res.code === 200) {
+                closeMask();
+                return;
+            }
+            btn.disabled = false;
+            btn.textContent = '同意并继续';
+            errorEl.textContent = (res && res.msg) ? res.msg : '提交失败，请重试';
+        }).fail(function () {
+            btn.disabled = false;
+            btn.textContent = '同意并继续';
+            errorEl.textContent = '网络异常，请稍后重试';
+        });
+    });
+})();
+</script>
+<?php endif; ?>
 </body>
 </html>
  
