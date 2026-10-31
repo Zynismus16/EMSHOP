@@ -144,56 +144,6 @@ function appstore_absolutize_remote_url(string $url): string
     return rtrim(LicenseClient::currentBaseUrl(), '/') . '/' . ltrim($url, '/');
 }
 
-/**
- * 把旧 app_purchased_list.php 的条目映射成 app-list 的字段名。
- *
- * 「已购买」tab 暂时还走旧接口，但前端只认一套字段，所以在这里适配一次，
- * 免得两个视图里到处写 `d.price || d.my_price` 这种双名兼容。
- *
- * 已购买 = 已拥有，所以 price 归零、can_buy 为 true（按钮会走到"安装"分支，
- * 而不是"先激活授权"）；两个档位的原价仍保留，界面还能做对比。
- */
-function appstore_map_legacy_item(array $app): array
-{
-    $cover = trim((string) ($app['cover'] ?? ''));
-    $shots = [];
-    foreach ((array) ($app['images'] ?? []) as $img) {
-        if (is_string($img) && $img !== '') $shots[] = ['url' => $img];
-    }
-    if ($shots === [] && $cover !== '') $shots[] = ['url' => $cover];
-
-    return $app + [
-        'description'   => (string) ($app['content'] ?? ''),
-        'price'         => '0.00',
-        'price_vip'     => (string) ($app['vip_price'] ?? '0'),
-        'price_svip'    => (string) ($app['svip_price'] ?? '0'),
-        'can_buy'       => true,
-        'package_url'   => (string) ($app['file_path'] ?? ''),
-        'install_count' => (int) ($app['install_num'] ?? 0),
-        'screenshots'   => $shots,
-    ];
-}
-
-/**
- * 把旧接口的分页结构包成 app-list 的信封 { license, categories, meta, data }，
- * 让前端的 parseData 只需要一套写法。
- */
-function appstore_legacy_envelope(array $legacy): array
-{
-    $list = is_array($legacy['list'] ?? null) ? $legacy['list'] : [];
-    return [
-        'license'    => [],
-        'categories' => [],
-        'meta'       => [
-            'page'      => (int) ($legacy['page']    ?? 1),
-            'per_page'  => (int) ($legacy['pageNum'] ?? 10),
-            'total'     => (int) ($legacy['count']   ?? 0),
-            'last_page' => 0,
-        ],
-        'data'       => array_map('appstore_map_legacy_item', $list),
-    ];
-}
-
 function appstore_require_writable_path(string $path): void
 {
     $path = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $path);
@@ -353,8 +303,7 @@ if ((string) Input::get('_action', '') === 'app_detail') {
 //
 // tab=main     → scope=main,主站自己用,合并 em_plugin/em_template 已装状态
 // tab=merchant → scope=branch,主站为分站采购,合并 em_app_market 已上架状态
-// list_mode=purchased → 仍走旧接口 app_purchased_list.php（新接口没有"已购买"这个概念），
-//                       返回结构在下面适配成 app-list 的信封，前端只认一套
+// list_mode=purchased → 走同一条 app-list，带 purchased=1 让上游按已支付订单过滤
 if ((string) Input::get('_action', '') === 'list') {
     if (!$officialLoggedIn) {
         Response::error('请先登录官方账号后再使用应用商店');
@@ -376,9 +325,8 @@ if ((string) Input::get('_action', '') === 'list') {
     if (!in_array($listMode, ['', 'purchased'], true)) $listMode = '';
     $isPurchasedList = ($listMode === 'purchased');
 
-    // 两个接口的参数名不一样，别混：
-    //   app-list（新）            → domain + code + per_page（服务端上限 50）
-    //   app_purchased_list（旧）  → host + emkey + pageNum（「已购买」tab 还在用）
+    // app-list 参数：domain + code + per_page（服务端上限 50）；
+    // 「已购买」tab 也走同一条接口，只是多带 purchased=1
     $page  = max(1, (int) Input::get('page', 1));
     $limit = max(1, (int) Input::get('limit', $isPurchasedList ? 10 : 20));
     $common = [
@@ -394,21 +342,18 @@ if ((string) Input::get('_action', '') === 'list') {
     if ($categoryId !== null && $categoryId !== '') {
         $common['category_id'] = (int) $categoryId;
     }
-    $params = $isPurchasedList
-        ? $common + [
-            'pageNum' => min(100, $limit),
-            'emkey'   => $emkey,
-            'host'    => $host,
-            'source'  => 'admin',
-            'account' => $accountName,
-        ]
-        : $common + [
-            'per_page' => min(50, $limit),
-            'domain'   => $host,
-            'code'     => $emkey,
-            'source'   => 'admin',
-            'account'  => $accountName,
-        ];
+    $params = $common + [
+        'per_page' => min(50, $limit),
+        'domain'   => $host,
+        'code'     => $emkey,
+        'source'   => 'admin',
+        'account'  => $accountName,
+    ];
+
+    /* 已购买：让上游按订单里的已支付应用过滤 */
+    if ($isPurchasedList) {
+        $params['purchased'] = 1;
+    }
 
     // 已购买列表依赖 emkey；未激活时直接返回空页，避免打断页面
     if ($isPurchasedList && $emkey === '') {
@@ -421,18 +366,10 @@ if ((string) Input::get('_action', '') === 'list') {
     }
 
     try {
-        if ($isPurchasedList) {
-            $legacy = $tab === 'merchant'
-                ? LicenseClient::merchantAppPurchasedList($params, $officialToken)
-                : LicenseClient::mainAppPurchasedList($params, $officialToken);
-            // 旧接口的字段名/分页结构与 app-list 不同，在这里适配一次，前端只认一套
-            $result = appstore_legacy_envelope($legacy);
-        } else {
-            // scope 由镜像方法注入：mainAppList → 'main' / merchantAppList → 'branch'
-            $result = $tab === 'merchant'
-                ? LicenseClient::merchantAppList($params, $officialToken)
-                : LicenseClient::mainAppList($params, $officialToken);
-        }
+        // scope 由镜像方法注入：mainAppList → 'main' / merchantAppList → 'branch'
+        $result = $tab === 'merchant'
+            ? LicenseClient::merchantAppList($params, $officialToken)
+            : LicenseClient::mainAppList($params, $officialToken);
 
         // 这次列表是带着本地激活码去问的：服务端明确回未授权 → 清空本地授权
         // （码不存在 / 已作废 / 域名对不上都是这个值，口径与 license/status 一致）
