@@ -45,7 +45,10 @@ $guides = [
         'steps' => [
             [
                 'title' => '1. 在站点配置中添加以下规则',
-                'code'  => 'location / {
+                'code'  => 'location ~* ^/content/(uploads|uploadfile|cache|tmp)/.*\.php(/|$) {
+    return 404;
+}
+location / {
     try_files $uri $uri/ /index.php$is_args$args;
 }',
             ],
