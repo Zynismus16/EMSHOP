@@ -419,7 +419,7 @@ $(function () {
                 }
             });
 
-            // 线路延迟：展开下拉时并发测一遍（服务端对每条线路发一个 HEAD），
+            // 线路延迟：展开下拉时并发测一遍（服务端对每条线路发一个 GET），
             // 结果缓存 60 秒，避免每次展开都打一遍官方服务器
             var __lineLatencyAt = 0, __linePinging = false;
             function renderLineLatency(lines) {
@@ -432,7 +432,8 @@ $(function () {
                     }
                     $ms.removeClass('is-ok is-warn is-bad');
                     if (!row || row.ms === null || row.ms < 0) {
-                        $ms.addClass('is-bad').text('超时');
+                        // 服务端对传输失败（DNS 解析失败 / 连接被拒 / 超时）一律给 null
+                        $ms.addClass('is-bad').text('失败');
                         return;
                     }
                     var ms = parseInt(row.ms, 10);

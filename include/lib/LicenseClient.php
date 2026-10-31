@@ -33,11 +33,11 @@ final class LicenseClient
 
     public const OFFICIAL_BASE_URL = [
         [
-            'url' => 'https://bs.ihehe.me/',
+            'url' => 'https://api.bs001.work/',
             'name' => '香港优化;三网混合',
         ],
         [
-            'url' => 'https://bs2.ihehe.me/',
+            'url' => 'https://api.bs002.work/',
             'name' => '香港极速;三网直连',
         ]
     ];
@@ -948,8 +948,13 @@ final class LicenseClient
      * 所以总耗时约等于最慢那条，而不是逐条相加。
      * **不要用 HEAD**：实测部分线路/节点会直接重置 HEAD 连接（curl errno 35），
      * 会导致明明能用却全部显示"超时"。
-     * 连不上 / 超时 → ms 为 null；4xx/5xx 也算可达 —— 这里要的是网络往返，
-     * 不是响应内容。
+     * DNS 解析失败 / 连接被拒 / 超时等**传输失败一律 ms = null**；4xx/5xx 算可达 ——
+     * 这里要的是网络往返，不是响应内容。
+     *
+     * 判断成败必须走 curl_multi_info_read()：curl_multi 模式下每个句柄的结果只进
+     * 这条消息队列，php-curl 的 curl_errno() 在没读过队列时恒为 0 —— 以前直接看
+     * errno，结果不可达的线路会被当成成功，把「失败耗时」当延迟显示（很快就失败的
+     * 域名甚至只显示 1 ms）。
      *
      * @return array<int, array{index:int, url:string, name:string, ms:int|null}>
      */
@@ -988,12 +993,28 @@ final class LicenseClient
             } while ($active && $status === CURLM_OK);
         }
 
+        // 先收完消息队列：每个句柄的成败只在这里拿得到（见方法注释）。
+        // handle 在 PHP 8 是对象、7.4 是 resource，两种都兼容。
+        $results = [];
+        if ($mh !== false) {
+            while (($info = curl_multi_info_read($mh)) !== false) {
+                $h = $info['handle'] ?? null;
+                if ($h === null) {
+                    continue;
+                }
+                $key = is_object($h) ? spl_object_id($h) : (int) $h;
+                $results[$key] = (int) $info['result'];
+            }
+        }
+
         $out = [];
         foreach ($lines as $i => $line) {
             $ms = null;
             if (isset($handles[$i])) {
                 $ch = $handles[$i];
-                if (curl_errno($ch) === 0) {
+                $key = is_object($ch) ? spl_object_id($ch) : (int) $ch;
+                // 队列里没有结果 = 传输没跑完（multi 出错提前退出），同样按失败算
+                if (($results[$key] ?? -1) === CURLE_OK) {
                     $ms = (int) round((float) curl_getinfo($ch, CURLINFO_TOTAL_TIME) * 1000);
                 }
                 curl_multi_remove_handle($mh, $ch);
