@@ -191,7 +191,7 @@ final class UpdateService
             // 不跟随重定向：否则上面的 host 白名单可被授权主机的 302 绕过
             // （第一次请求确实去了白名单主机，最终内容却来自任意地址）
             CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_TIMEOUT        => 600,  // 10 分钟下载请求最大耗时
+            CURLOPT_TIMEOUT        => 120,  // 120秒下载不下来就退出，正常网络足够了
             CURLOPT_CONNECTTIMEOUT => 10,  // 10秒建立连接时间
             CURLOPT_USERAGENT      => 'emshop-update/' . (defined('EM_VERSION') ? EM_VERSION : 'dev'),
             // 恢复证书与主机名校验。升级包会被覆盖到整站代码，链路上被替换等于站点沦陷。
