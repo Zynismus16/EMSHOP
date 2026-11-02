@@ -4,287 +4,345 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<meta name="theme-color" content="#f5f7fb">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#f3efe6">
 <title>页面不存在 · 404</title>
 <style>
     :root {
-        --bg: #f5f7fb;
-        --text: #111827;
-        --muted: #6b7280;
-        --border: rgba(17, 24, 39, .08);
-        --panel: rgba(255, 255, 255, .78);
-        --brand: #4f46e5;
-        --brand-2: #0ea5e9;
-        --brand-3: #8b5cf6;
-        --shadow: 0 24px 80px rgba(17, 24, 39, .08);
-    }
-
-    @media (prefers-color-scheme: dark) {
-        :root {
-            --bg: #0b1020;
-            --text: #f3f4f6;
-            --muted: #9ca3af;
-            --border: rgba(255, 255, 255, .08);
-            --panel: rgba(17, 24, 39, .62);
-            --shadow: 0 24px 80px rgba(0, 0, 0, .45);
-        }
+        --paper: #f3efe6;
+        --ink: #141414;
+        --muted: #625d53;
+        --orange: #ff4d1f;
+        --line: rgba(20, 20, 20, .16);
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+        --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
     }
 
     * { box-sizing: border-box; }
 
-    html, body { height: 100%; }
+    html { -webkit-text-size-adjust: 100%; }
 
     body {
         margin: 0;
         min-height: 100vh;
         min-height: 100dvh;
-        display: grid;
-        place-items: center;
-        padding: clamp(20px, 5vw, 48px);
-        overflow-x: hidden;
-        background: var(--bg);
-        color: var(--text);
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: var(--sans);
         -webkit-font-smoothing: antialiased;
-        text-rendering: optimizeLegibility;
     }
 
-    /* 背景光晕 + 网格，纯 CSS，不加载任何外部资源 */
-    body::before {
-        content: "";
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        pointer-events: none;
-        background:
-            radial-gradient(60% 50% at 12% 8%, rgba(79, 70, 229, .16), transparent 70%),
-            radial-gradient(50% 45% at 88% 18%, rgba(14, 165, 233, .14), transparent 70%),
-            radial-gradient(50% 50% at 50% 108%, rgba(139, 92, 246, .12), transparent 72%);
+    .poster {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) clamp(120px, 26vw, 360px);
+        min-height: 100vh;
+        min-height: 100dvh;
     }
 
-    body::after {
-        content: "";
-        position: fixed;
-        inset: 0;
-        z-index: 0;
-        pointer-events: none;
-        opacity: .28;
-        background-image:
-            linear-gradient(rgba(17, 24, 39, .06) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(17, 24, 39, .06) 1px, transparent 1px);
-        background-size: 56px 56px;
-        -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, #000 20%, transparent 78%);
-        mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, #000 20%, transparent 78%);
+    .main {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 32px;
+        min-width: 0;
+        padding: clamp(24px, 4.5vw, 64px);
     }
 
-    @media (prefers-color-scheme: dark) {
-        body::after {
-            background-image:
-                linear-gradient(rgba(255, 255, 255, .05) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255, 255, 255, .05) 1px, transparent 1px);
-        }
-    }
-
-    .panel {
-        position: relative;
-        z-index: 1;
-        width: 100%;
-        max-width: 720px;
-        padding: clamp(32px, 6vw, 64px) clamp(22px, 5vw, 56px);
-        text-align: center;
-        background: var(--panel);
-        border: 1px solid var(--border);
-        border-radius: clamp(20px, 4vw, 28px);
-        box-shadow: var(--shadow);
-        -webkit-backdrop-filter: blur(16px) saturate(140%);
-        backdrop-filter: blur(16px) saturate(140%);
-        animation: rise .6s cubic-bezier(.22, .8, .3, 1) both;
-    }
-
-    @keyframes rise {
-        from { opacity: 0; transform: translateY(14px); }
-        to   { opacity: 1; transform: translateY(0); }
-    }
-
-    .eyebrow {
-        display: inline-flex;
+    .top {
+        display: flex;
         align-items: center;
-        gap: 8px;
-        margin: 0 0 clamp(18px, 3vw, 26px);
-        padding: 7px 14px;
-        border: 1px solid var(--border);
-        border-radius: 999px;
-        background: rgba(79, 70, 229, .08);
-        color: var(--brand);
-        font-size: 12px;
-        font-weight: 600;
-        letter-spacing: .12em;
+        justify-content: space-between;
+        gap: 16px;
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: .22em;
         text-transform: uppercase;
     }
 
-    .eyebrow::before {
+    .top .mark::before {
         content: "";
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: currentColor;
-        box-shadow: 0 0 0 4px rgba(79, 70, 229, .14);
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        margin-right: 10px;
+        vertical-align: 1px;
+        background: var(--orange);
+    }
+
+    .hero {
+        margin: auto 0;
+        padding: clamp(10px, 2vh, 28px) 0;
     }
 
     .code {
-        margin: 0;
-        font-size: clamp(76px, 17vw, 148px);
-        font-weight: 800;
-        line-height: .88;
-        letter-spacing: -.045em;
-        background: linear-gradient(118deg, var(--brand) 8%, var(--brand-2) 58%, var(--brand-3) 96%);
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
+        margin: 0 0 0 -.055em;
+        font-size: clamp(96px, 18vw, 240px);
+        font-weight: 900;
+        line-height: .8;
+        letter-spacing: -.07em;
+        text-shadow:
+            clamp(5px, .9vw, 13px) clamp(5px, .9vw, 13px) 0 var(--orange);
     }
 
-    .title {
-        margin: clamp(16px, 3vw, 24px) 0 0;
-        font-size: clamp(21px, 3.4vw, 28px);
-        font-weight: 700;
-        letter-spacing: -.01em;
+    h1 {
+        margin: clamp(14px, 2.4vw, 24px) 0 0;
+        font-size: clamp(34px, 5.2vw, 64px);
+        font-weight: 900;
+        line-height: .98;
+        letter-spacing: -.035em;
     }
 
     .desc {
-        margin: 14px auto 0;
-        max-width: 46ch;
+        margin: 16px 0 0;
         color: var(--muted);
-        font-size: clamp(14px, 2.2vw, 15px);
-        line-height: 1.85;
-    }
-
-    .req {
-        margin: 18px auto 0;
-        max-width: 100%;
-        color: var(--muted);
-        font-size: 12.5px;
-        line-height: 1.7;
-        word-break: break-all;
-    }
-
-    .req code {
-        display: inline-block;
-        max-width: 100%;
-        padding: 6px 12px;
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        background: rgba(17, 24, 39, .04);
-        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-        font-size: 12px;
-        color: var(--text);
-    }
-
-    @media (prefers-color-scheme: dark) {
-        .req code { background: rgba(255, 255, 255, .05); }
+        font-size: clamp(14px, 1.6vw, 15.5px);
+        line-height: 1.9;
     }
 
     .actions {
         display: flex;
         flex-wrap: wrap;
-        justify-content: center;
-        gap: 12px;
-        margin-top: clamp(26px, 4vw, 36px);
+        align-items: center;
+        gap: 16px 26px;
+        margin-top: clamp(22px, 3.2vw, 32px);
     }
 
     .btn {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        min-height: 46px;
-        padding: 0 26px;
-        border-radius: 12px;
-        border: 1px solid transparent;
-        font-size: 14.5px;
-        font-weight: 600;
+        min-height: 50px;
+        padding: 0 30px;
+        border: 2px solid var(--ink);
+        border-radius: 0;
+        background: var(--orange);
+        color: var(--ink);
+        font-size: 15px;
+        font-weight: 800;
+        letter-spacing: .02em;
         text-decoration: none;
-        cursor: pointer;
-        transition: background-color .18s ease, border-color .18s ease, color .18s ease, box-shadow .18s ease;
+        transition: background-color .16s ease, color .16s ease;
     }
 
-    .btn:focus-visible {
-        outline: 2px solid var(--brand-2);
+    .btn:hover {
+        background: var(--ink);
+        color: var(--paper);
+    }
+
+    .link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+        border-bottom: 2px solid var(--ink);
+        color: var(--ink);
+        font-size: 15px;
+        font-weight: 700;
+        text-decoration: none;
+        transition: color .16s ease, border-color .16s ease;
+    }
+
+    .link:hover {
+        color: var(--orange);
+        border-color: var(--orange);
+    }
+
+    .btn:focus-visible,
+    .link:focus-visible,
+    .back:focus-visible {
+        outline: 3px solid var(--orange);
         outline-offset: 3px;
     }
 
-    .btn-primary {
-        color: #fff;
-        background: linear-gradient(120deg, var(--brand), var(--brand-2));
-        box-shadow: 0 10px 26px rgba(79, 70, 229, .26);
+    .bottom {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 20px;
+        padding-top: 15px;
+        border-top: 1px solid var(--line);
+        font-family: var(--mono);
+        font-size: 10.5px;
+        line-height: 1.7;
+        color: var(--muted);
     }
 
-    .btn-primary:hover {
-        background: linear-gradient(120deg, #4338ca, #0284c7);
-        box-shadow: 0 12px 30px rgba(79, 70, 229, .34);
+    .path {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        min-width: 0;
+        margin: 0;
     }
 
-    .btn-ghost {
-        color: var(--text);
-        background: transparent;
-        border-color: var(--border);
+    .path span {
+        flex: none;
+        letter-spacing: .18em;
     }
 
-    .btn-ghost:hover {
-        background: rgba(17, 24, 39, .05);
-        border-color: rgba(17, 24, 39, .18);
-    }
-
-    @media (prefers-color-scheme: dark) {
-        .btn-ghost:hover {
-            background: rgba(255, 255, 255, .06);
-            border-color: rgba(255, 255, 255, .2);
-        }
+    .path code {
+        display: inline-block;
+        max-width: min(52vw, 560px);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--ink);
+        font-family: inherit;
+        font-size: 10.5px;
     }
 
     .back {
-        margin: clamp(22px, 4vw, 30px) 0 0;
+        flex: none;
         color: var(--muted);
-        font-size: 12.5px;
+        text-decoration: none;
+        letter-spacing: .06em;
+        transition: color .16s ease;
     }
 
-    .back button {
-        padding: 0;
-        border: 0;
-        background: none;
-        color: inherit;
-        font: inherit;
-        text-decoration: underline;
-        text-underline-offset: 3px;
-        cursor: pointer;
+    .back:hover { color: var(--ink); }
+
+    /* 右侧色块 */
+    .side {
+        position: relative;
+        overflow: hidden;
+        background: var(--orange);
     }
 
-    .back button:hover { color: var(--text); }
+    .side .vertical {
+        position: absolute;
+        left: clamp(16px, 2vw, 28px);
+        bottom: clamp(24px, 4vw, 44px);
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: .32em;
+        text-transform: uppercase;
+        color: var(--ink);
+    }
 
-    @media (max-width: 480px) {
-        .actions { flex-direction: column; }
+    .side .shape {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: min(64%, 260px);
+        aspect-ratio: 1;
+        border: 2px solid var(--ink);
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+    }
+
+    .side .shape::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: -10%;
+        width: 2px;
+        height: 120%;
+        background: var(--ink);
+        transform: translateX(-50%);
+    }
+
+    .side .shape::after {
+        content: "";
+        position: absolute;
+        left: -10%;
+        top: 50%;
+        width: 120%;
+        height: 2px;
+        background: var(--ink);
+        transform: translateY(-50%);
+    }
+
+    @media (max-width: 760px) {
+        .poster {
+            grid-template-columns: minmax(0, 1fr);
+            grid-template-rows: clamp(72px, 16vw, 104px) minmax(0, 1fr);
+        }
+
+        .side {
+            grid-row: 1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 clamp(20px, 5vw, 32px);
+        }
+
+        .side .vertical {
+            position: static;
+            writing-mode: horizontal-tb;
+            transform: none;
+            letter-spacing: .24em;
+            font-size: 10px;
+        }
+
+        .side .shape {
+            position: relative;
+            left: auto;
+            top: auto;
+            width: clamp(40px, 10vw, 56px);
+            transform: none;
+        }
+
+        .main {
+            gap: 28px;
+            padding: clamp(22px, 5vw, 36px);
+        }
+
+        .bottom {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .path { width: 100%; }
+        .path code { max-width: 100%; }
+    }
+
+    @media (max-width: 420px) {
+        .actions { align-items: stretch; flex-direction: column; }
         .btn { width: 100%; }
+        .link { align-self: flex-start; }
     }
 
     @media (prefers-reduced-motion: reduce) {
-        .panel { animation: none; }
         * { transition: none !important; }
     }
 </style>
 </head>
 <body>
-    <main class="panel">
-        <p class="eyebrow">Error 404</p>
-        <p class="code" aria-hidden="true">404</p>
-        <h1 class="title">页面走丢了</h1>
-        <p class="desc">你访问的地址不存在、已被移除，或者链接输错了。检查一下网址，或从下面重新出发。</p>
-        <p class="req">请求地址：<code id="req-path">—</code></p>
+    <div class="poster">
+        <section class="main">
+            <header class="top">
+                <span class="mark">Error / 404</span>
+                <span>Not Found</span>
+            </header>
 
-        <div class="actions">
-            <a class="btn btn-primary" href="/">返回首页</a>
-            <a class="btn btn-ghost" href="/goods_list">浏览商品</a>
-        </div>
+            <div class="hero">
+                <p class="code" aria-hidden="true">404</p>
+                <h1>此路不通。</h1>
+                <p class="desc">这个地址背后没有页面。也许链接已经失效，或者它从未存在过。</p>
 
-        <p class="back"><button type="button" id="go-back">返回上一页</button></p>
-    </main>
+                <div class="actions">
+                    <a class="btn" href="/">回到首页</a>
+                    <a class="link" href="/goods_list">浏览商品<span aria-hidden="true">↗</span></a>
+                </div>
+            </div>
+
+            <footer class="bottom">
+                <p class="path">
+                    <span>URL</span>
+                    <code id="req-path">—</code>
+                </p>
+                <a class="back" id="go-back" href="/">返回上一页</a>
+            </footer>
+        </section>
+
+        <aside class="side" aria-hidden="true">
+            <span class="vertical">Page Not Found — 404 — Lost Route</span>
+            <span class="shape"></span>
+        </aside>
+    </div>
 
     <script>
         (function () {
@@ -295,11 +353,10 @@
 
             var backEl = document.getElementById('go-back');
             if (backEl) {
-                backEl.addEventListener('click', function () {
+                backEl.addEventListener('click', function (e) {
                     if (window.history.length > 1) {
+                        e.preventDefault();
                         window.history.back();
-                    } else {
-                        window.location.href = '/';
                     }
                 });
             }
