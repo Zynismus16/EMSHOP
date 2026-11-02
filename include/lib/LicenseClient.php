@@ -35,11 +35,12 @@ final class LicenseClient
         [
             'url' => 'https://api.bs001.work/',
             'name' => '香港优化;三网混合',
-        ],
-        [
-            'url' => 'https://api.bs002.work/',
-            'name' => '香港极速;三网直连',
         ]
+        // ,
+        // [
+        //     'url' => 'https://api.bs002.work/',
+        //     'name' => '香港极速;三网直连',
+        // ]
     ];
 
 
