@@ -641,6 +641,14 @@ final class Dispatcher
 
         $pathinfo = $_SERVER['PATH_INFO'] ?? $_SERVER['ORIG_PATH_INFO'] ?? '';
 
+        // 标准伪静态（Nginx try_files / Apache RewriteRule / IIS Rewrite）只保留
+        // REQUEST_URI，不传 PATH_INFO。这里补出路径，否则没命中 pretty 规则的 URL
+        // （/xxx/xxx、/abc.html 等）会拿不到路径，退化成默认控制器 index ——
+        // 结果是未知路径返回 200 + 首页（软 404），而不是 404。
+        if ($pathinfo === '' || $pathinfo === '/') {
+            $pathinfo = $this->pathInfoFromRequestUri();
+        }
+
         // 显式 ?c= 且为已知控制器时，强制走 query string 模式。
         // 部分环境下 PATH_INFO 非空会吞掉 ?c=forgot_password&a=reset 等参数，导致 404。
         $cParam = trim((string) ($_GET['c'] ?? ''));
@@ -747,6 +755,40 @@ final class Dispatcher
             $this->controller = 'notfound';
             $this->action = '_index';
         }
+    }
+
+    /**
+     * 从 REQUEST_URI 还原站点内的路径，供未传 PATH_INFO 的伪静态环境使用。
+     *
+     * 跳过站点根 "/" 和 index.php 本身（/index.php、/index.php/xxx）；
+     * 站点装在子目录时按 SCRIPT_NAME 的目录前缀剥离，让 /shop/xxx 还原成 /xxx。
+     *
+     * @return string 形如 "/xxx/yyy"；不应参与 pathinfo 解析时返回空串
+     */
+    private function pathInfoFromRequestUri(): string
+    {
+        $uri = (string) ($_SERVER['REQUEST_URI'] ?? '');
+        $path = (string) parse_url($uri, PHP_URL_PATH);
+        if ($path === '' || $path === '/') {
+            return '';
+        }
+
+        $basePath = rtrim(str_replace('\\', '/', dirname((string) ($_SERVER['SCRIPT_NAME'] ?? '/index.php'))), '/');
+        if ($basePath !== '' && $basePath !== '/') {
+            if ($path === $basePath) {
+                return '';
+            }
+            if (strpos($path, $basePath . '/') === 0) {
+                $path = substr($path, strlen($basePath));
+            }
+        }
+
+        $path = trim($path, '/');
+        if ($path === '' || $path === 'index.php' || strpos($path, 'index.php/') === 0) {
+            return '';
+        }
+
+        return '/' . $path;
     }
 
     /**
