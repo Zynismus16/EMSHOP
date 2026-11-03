@@ -1485,3 +1485,17 @@ body.sidebar-pre-collapsed .admin-right {
 /* ================================================
    橙色按钮
    ================================================ */
+
+/* ================================================
+   layui 表格分页：手机端横向滑动
+   layui 默认 overflow:hidden，窄屏时页码被裁掉且拖不动；
+   这里只把溢出方式改成横向滚动，布局仍保持单行。
+   ================================================ */
+@media (max-width: 768px) {
+    .layui-table-page {
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
+    }
+}
