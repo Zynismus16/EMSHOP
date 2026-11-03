@@ -237,6 +237,8 @@ include __DIR__ . '/header.php';
     font-family: inherit;
     transition: border-color 0.15s ease, background 0.15s ease;
 }
+/* hidden 属性是 UA 样式，优先级低于 .oa-tile 的 display:flex，必须显式覆盖 */
+.oa-tile[hidden] { display: none; }
 .oa-tile:hover { border-color: #c7d2fe; background: #fafbff; }
 .oa-tile:hover .oa-tile__name,
 .oa-tile:hover .oa-tile__arrow { color: #4f46e5; }
