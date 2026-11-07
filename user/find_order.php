@@ -30,9 +30,10 @@ $prefix = Database::prefix();
 
 /**
  * 订单列白名单：对外返回的字段，避免泄漏 order_password / admin_remark / payment 内部字段。
+ * guest_token 属于身份凭证，不能随订单数据下发：否则一个订单号就能换到该游客的所有订单。
  */
 $orderWhiteList = [
-    'id', 'order_no', 'user_id', 'guest_token',
+    'id', 'order_no', 'user_id',
     'goods_amount', 'discount_amount', 'pay_amount',
     'payment_code', 'payment_name',
     'status', 'pay_time', 'delivery_time', 'complete_time',
