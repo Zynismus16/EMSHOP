@@ -186,6 +186,10 @@ $showOrderNoTab = ($contactOn || $passwordOn);
         onError: function (res) {
             if (res && res.data && res.data.captcha_expr) {
                 setCaptchaExpr(res.data.captcha_expr);
+            } else if (res && res.code === 422) {
+                // 未查到订单（422）：body 正常解析时由上面的 captcha_expr 处理；
+                // 这里兜底 body 无法解析的情况，主动换一道新验证码
+                $('.fo-captcha__refresh').trigger('click');
             }
         }
     });
@@ -200,10 +204,10 @@ $showOrderNoTab = ($contactOn || $passwordOn);
               + '<small>请使用其他方式查询订单</small></div>'
             );
         } else {
-            $.post('/user/find_order.php', { mode: 'token', guest_token: guestToken }, function (res) {
+            function renderTokenResult(res) {
                 $('#tokenLoading').hide();
                 $('#panelToken .find-order-hint').hide();
-                if (res.code === 200 && res.data && res.data.length > 0) {
+                if (res && res.code === 200 && res.data && res.data.length > 0) {
                     GuestFind.renderResults(res.data, { autoScroll: false, meta: res.meta });
                 } else {
                     $('#panelToken').append(
@@ -211,7 +215,20 @@ $showOrderNoTab = ($contactOn || $passwordOn);
                       + '<small>请确认您之前在此浏览器下过单</small></div>'
                     );
                 }
-            }, 'json').fail(function () {
+            }
+            $.post('/user/find_order.php', { mode: 'token', guest_token: guestToken }, function (res) {
+                renderTokenResult(res);
+            }, 'json').fail(function (jqXHR) {
+                // 未查到订单返回 422，body 仍是业务错误结构；命中就直接渲染“未找到”
+                if (jqXHR && jqXHR.responseJSON) {
+                    renderTokenResult(jqXHR.responseJSON);
+                    return;
+                }
+                if (jqXHR && jqXHR.status === 422) {
+                    // 未查到订单（422）；兜底 body 无法解析的情况
+                    renderTokenResult({code: 422});
+                    return;
+                }
                 $('#tokenLoading').hide();
                 $('#panelToken .find-order-hint').hide();
                 $('#panelToken').append('<div class="find-order-empty">加载失败，请刷新重试</div>');

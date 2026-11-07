@@ -14,6 +14,7 @@ require_once __DIR__ . '/global_public.php';
  *   3. orderno     —— 凭订单编号查单
  *
  * 响应：所有 POST 都返回 JSON（列白名单脱敏，不带 order_password、admin_remark、内部 payment_*）。
+ *      查单成功 200；未查到订单 422（便于访问日志按状态码聚合，且不会被站点 404.html 拦截）；其余业务错误仍 200。
  * 列表结果里的 order_goods 只带列表展示所需字段，不含发货内容（卡密）——发货内容可能上百万字符，
  * 列表页不展示它，带上会让响应体随卡密数量线性膨胀（详情接口按需取完整内容）。
  */
@@ -261,6 +262,14 @@ if (Request::isPost()) {
         ], JSON_UNESCAPED_UNICODE);
         exit;
     } catch (Throwable $e) {
+        // 未查到订单按 HTTP 422 返回，便于访问日志按状态码聚合回溯。
+        // 不用 404：站点把 404 统一替换成 /404.html，JSON body 会被丢掉。
+        // 验证码/参数错误仍保持 200 + 业务 code，兼容现有前端约定。
+        $notFound = ['未找到订单', '未找到该订单', '未找到匹配订单'];
+        if (in_array((string) $e->getMessage(), $notFound, true)) {
+            http_response_code(422);
+        }
+
         // 失败时给 captcha 模式补发一道新题（已 consume，不发新的会让用户误以为还能用旧值）
         $errPayload = ['code' => 400, 'msg' => $e->getMessage()];
         if ($mode === 'credentials' || $mode === 'orderno') {
@@ -386,7 +395,7 @@ $statusMap = [
     <script src="/content/static/lib/jquery.pjax.js"></script>
     <script src="/content/static/lib/layui-v2.13.5/layui/layui.js"></script>
     <script src="/user/static/js/order_delivery_poll.js"></script>
-    <script src="/content/static/js/guest_find.js"></script>
+    <script src="/content/static/js/guest_find.js?v=<?= (int) @filemtime(EM_ROOT . '/content/static/js/guest_find.js') ?>"></script>
 </head>
 <body>
 

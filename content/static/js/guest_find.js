@@ -173,8 +173,23 @@ var GuestFind = (function () {
                 if (opts.onError) opts.onError(res, mode);
                 layer.msg(res.msg || '查询失败');
             }
-        }, 'json').fail(function () {
+        }, 'json').fail(function (jqXHR) {
             $btn.prop('disabled', false).html(origHtml);
+            // 未查到订单现在返回 HTTP 422，body 仍是业务错误结构：
+            // 有 responseJSON 就按业务失败处理，避免把“未找到订单”显示成网络错误。
+            var res = jqXHR && jqXHR.responseJSON ? jqXHR.responseJSON : null;
+            if (res) {
+                if (opts.onError) opts.onError(res, mode);
+                layer.msg(res.msg || '查询失败');
+                return;
+            }
+            if (jqXHR && jqXHR.status === 422) {
+                // 未查到订单返回 422；兜底处理 body 无法解析的情况
+                var notFoundMsg = mode === 'orderno' ? '未找到该订单' : '未找到匹配订单';
+                if (opts.onError) opts.onError({code: 422, msg: notFoundMsg}, mode);
+                layer.msg(notFoundMsg);
+                return;
+            }
             if (opts.onError) opts.onError({code: 0, msg: '网络错误'}, mode);
             layer.msg('网络错误');
         });
