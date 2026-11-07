@@ -1067,10 +1067,9 @@ layui.use(function () {
 
 $action = isset($_GET['action']) ? (string) $_GET['action'] : '';
 if (installer_is_installed()) {
-    if ($action === 'install' && installer_is_ajax_request()) {
-        Response::error('系统已安装，安装入口已关闭');
-    }
-    Response::redirect('/');
+    // 已安装：安装入口一律按 404 处理，不暴露安装目录，也不给重定向提示。
+    http_response_code(404);
+    exit;
 }
 // 第一步：不带参数展示介绍与运行环境建议
 if ($action === '') {
