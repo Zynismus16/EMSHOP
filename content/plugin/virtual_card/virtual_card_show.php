@@ -8,10 +8,10 @@ defined('EM_ROOT') || exit('access denied!');
  *   - action=export_order_cards  按订单 ID 导出已发卡密为 txt
  *   - 不带 action                展示占位说明（本插件不对外暴露主页面）
  *
- * 权限检查（与 user/order_detail.php、user/order_poll.php 一致）：
+ * 权限检查：
  *   - 登录用户：订单 user_id 匹配 em_front_user.id
- *   - 游客：订单 guest_token 匹配 GuestToken::get()
- *   - 查单页：POST 查单成功后写入 $_SESSION['em_find_order_visible'][order_no]，命中则放行
+ *   - 游客：v2 签名 Cookie 的 guest_token 匹配订单 guest_token
+ *   - 凭据查单（订单密码/联系方式）换来的 60 秒一次性 grant
  *   满足任一即放行；都不满足返回 403
  */
 
@@ -40,19 +40,24 @@ if ($action === 'export_order_cards') {
         exit('订单不存在');
     }
 
-    // 权限校验：本人 / 同浏览器游客单 / 查单 session 白名单（见 user/find_order.php）
+    // 权限校验：
+    //   1) 登录用户本人；
+    //   2) v2 签名 Cookie 与订单 guest_token 一致；
+    //   3) 凭据查单（订单密码/联系方式）换来的 60 秒一次性 grant，用完即焚。
+    // 不再接受「查单 session 白名单」：订单号 + 算术验证码不再等于卡密导出权。
     $isOwner = false;
     if (!empty($frontUser) && (int) $order['user_id'] === (int) $frontUser['id']) {
         $isOwner = true;
-    } elseif (empty($frontUser) && !empty($order['guest_token']) && $order['guest_token'] === GuestToken::get()) {
+    } elseif (empty($frontUser) && GuestToken::hasValidCookie()
+        && (string) ($order['guest_token'] ?? '') !== ''
+        && hash_equals((string) $order['guest_token'], GuestToken::get())) {
         $isOwner = true;
     } else {
-        $orderNo = (string) ($order['order_no'] ?? '');
-        if ($orderNo !== '') {
-            $visible = $_SESSION['em_find_order_visible'] ?? [];
-            if (isset($visible[$orderNo])) {
-                $isOwner = true;
-            }
+        if (session_status() === PHP_SESSION_NONE) @session_start();
+        $grant = (int) ($_SESSION['em_card_grant'][$orderId] ?? 0);
+        if ($grant >= time()) {
+            unset($_SESSION['em_card_grant'][$orderId]); // 一次性，用后立即失效
+            $isOwner = true;
         }
     }
     if (!$isOwner) {

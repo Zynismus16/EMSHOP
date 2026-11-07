@@ -90,7 +90,6 @@ if (Request::isPost()) {
     }
 
     $orderNo = trim((string) Input::post('order_no', ''));
-    $guestTokenPost = trim((string) Input::post('guest_token', ''));
     $contactQuery = trim((string) Input::post('contact_query', ''));
     $orderPassword = trim((string) Input::post('order_password', ''));
     $captchaInput = trim((string) Input::post('captcha', ''));
@@ -101,7 +100,7 @@ if (Request::isPost()) {
         // —— credentials / orderno 模式必须过两层防护：
         //   1) IP 限流（撞库的真正防线）：每分钟 ≤ 10 次
         //   2) 算术 captcha（人类友好门槛，过滤无脑脚本）
-        // token 模式跳过：浏览器 cookie 里的 guest_token 等同于已认证身份，自身就是凭据
+        // token 模式跳过：只认 v2 签名 Cookie，身份由服务端签名保证
         if ($mode === 'credentials' || $mode === 'orderno') {
             $rlKey = 'find_order:' . RateLimit::clientIp();
             if (RateLimit::tooManyAttempts($rlKey, 10)) {
@@ -126,12 +125,12 @@ if (Request::isPost()) {
 
         if ($mode === 'token') {
             // —— tab1：通过浏览器 guest_token 列近 10 单
-            if ($guestTokenPost === '') {
-                throw new RuntimeException('缺少浏览器身份令牌');
-            }
+            // 只认 v2 签名 Cookie，忽略 POST 里的 guest_token：
+            // 旧 token 没有签名，无法再借此列出订单。
+            $guestToken = GuestToken::get();
             $rows = Database::query(
                 "SELECT * FROM {$prefix}order WHERE guest_token = ? ORDER BY id DESC LIMIT 10",
-                [$guestTokenPost]
+                [$guestToken]
             );
             if (empty($rows)) {
                 throw new RuntimeException('未找到订单');
@@ -176,6 +175,19 @@ if (Request::isPost()) {
             }
             foreach ($rows as $r) $result[] = $sanitizeOrder($r);
 
+            // 凭据验证通过：给本次命中的订单发 60 秒一次性卡密授权。
+            // 只影响卡密查看/导出，订单状态页仍走 session 白名单。
+            if (session_status() === PHP_SESSION_NONE) @session_start();
+            foreach ($rows as $r) {
+                $oid = (int) ($r['id'] ?? 0);
+                if ($oid > 0) {
+                    if (!isset($_SESSION['em_card_grant']) || !is_array($_SESSION['em_card_grant'])) {
+                        $_SESSION['em_card_grant'] = [];
+                    }
+                    $_SESSION['em_card_grant'][$oid] = time() + 60;
+                }
+            }
+
         } elseif ($mode === 'orderno') {
             // —— tab3：仅订单编号查单（无需凭据）
             if ($orderNo === '') {
@@ -212,8 +224,8 @@ if (Request::isPost()) {
             $no = (string) ($r['order_no'] ?? '');
             if ($no !== '') $visible[$no] = time();
         }
-        // 防 session 无限膨胀：保留 7 天内访问过的，过期的清掉
-        $cutoff = time() - 7 * 86400;
+        // 防 session 无限膨胀：只保留 30 分钟内访问过的，过期的清掉
+        $cutoff = time() - 1800;
         foreach ($visible as $no => $t) {
             if ($t < $cutoff) unset($visible[$no]);
         }
@@ -307,10 +319,36 @@ if ($detailOrderNo !== '') {
         );
         if ($row) {
             $detailExtraPairs = OrderModel::parseBuyerContactFields($row)['extra_pairs'];
-            // 详情要展示卡密，这里取完整商品行（含 delivery_content）
-            $detailOrder = $sanitizeOrder($row, OrderModel::getOrderGoods((int) $row['id']));
+
+            // 卡密内容只给「已验证身份」：登录本人 / v2 签名 Cookie 匹配 / 凭据换来的 60 秒 grant。
+            // 仅凭订单号 + 验证码命中 session 白名单，只能看状态和金额，看不到卡密。
+            $cardAllowed = false;
+            if (!empty($frontUser['id']) && (int) ($row['user_id'] ?? 0) === (int) $frontUser['id']) {
+                $cardAllowed = true;
+            } elseif (empty($frontUser) && GuestToken::hasValidCookie()
+                && (string) ($row['guest_token'] ?? '') !== ''
+                && hash_equals((string) $row['guest_token'], GuestToken::get())) {
+                $cardAllowed = true;
+            } else {
+                if (session_status() === PHP_SESSION_NONE) @session_start();
+                $grant = (int) ($_SESSION['em_card_grant'][(int) ($row['id'] ?? 0)] ?? 0);
+                if ($grant >= time()) {
+                    $cardAllowed = true;
+                }
+            }
+
+            $detailGoodsRaw = OrderModel::getOrderGoods((int) $row['id']);
+            if (!$cardAllowed) {
+                // 未验证身份：剥离发货内容，模板/插件就不会渲染卡密和导出按钮
+                foreach ($detailGoodsRaw as &$g) {
+                    unset($g['delivery_content']);
+                }
+                unset($g);
+            }
+
+            $detailOrder = $sanitizeOrder($row, $detailGoodsRaw);
             $detailGoods = $detailOrder['order_goods'] ?? [];
-            if (OrderModel::isPurchasedStatus((string) ($detailOrder['status'] ?? ''))) {
+            if ($cardAllowed && OrderModel::isPurchasedStatus((string) ($detailOrder['status'] ?? ''))) {
                 $detailGoods = OrderModel::attachGoodsGuides($detailGoods);
             }
         } else {

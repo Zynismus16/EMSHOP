@@ -24,8 +24,17 @@ if ($orderNo !== '') {
         $isOwner = false;
         if ($frontUser && (int) $order['user_id'] === (int) $frontUser['id']) {
             $isOwner = true;
-        } elseif (empty($frontUser) && $order['guest_token'] === GuestToken::get()) {
+        } elseif (empty($frontUser) && GuestToken::hasValidCookie()
+            && (string) ($order['guest_token'] ?? '') !== ''
+            && hash_equals((string) $order['guest_token'], GuestToken::get())) {
             $isOwner = true;
+        } elseif (empty($frontUser)) {
+            // 凭据查单换来的 60 秒 grant 也允许查看（导出时才消耗 grant）
+            if (session_status() === PHP_SESSION_NONE) @session_start();
+            $grant = (int) ($_SESSION['em_card_grant'][(int) ($order['id'] ?? 0)] ?? 0);
+            if ($grant >= time()) {
+                $isOwner = true;
+            }
         }
 
         if (!$isOwner) {
