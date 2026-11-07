@@ -16,52 +16,58 @@ $stats = [
     'month_spent'      => 0,
     'today_spent'      => 0,
 ];
-try {
-    $row = Database::fetchOne(
-        "SELECT COUNT(*) AS total,
-                SUM(status='pending') AS pending,
-                SUM(status IN ('paid','delivering','delivered')) AS delivering,
-                SUM(status='completed') AS completed
-           FROM `{$prefix}order` WHERE user_id = ?",
-        [$userId]
-    );
-    if ($row) {
-        $stats['order_total']      = (int) $row['total'];
-        $stats['order_pending']    = (int) $row['pending'];
-        $stats['order_delivering'] = (int) $row['delivering'];
-        $stats['order_completed']  = (int) $row['completed'];
+$recentOrders = [];
+
+// 游客（user_id = 0）在 order 表里代表「所有游客单」，不是「当前访客」。
+// 未登录时不能拿 0 去查订单：否则 WHERE user_id = 0 会把全站游客订单的
+// 订单号、金额、状态以及今日/本月成交额汇总暴露给任何匿名访问者。
+if ($userId > 0) {
+    try {
+        $row = Database::fetchOne(
+            "SELECT COUNT(*) AS total,
+                    SUM(status='pending') AS pending,
+                    SUM(status IN ('paid','delivering','delivered')) AS delivering,
+                    SUM(status='completed') AS completed
+               FROM `{$prefix}order` WHERE user_id = ?",
+            [$userId]
+        );
+        if ($row) {
+            $stats['order_total']      = (int) $row['total'];
+            $stats['order_pending']    = (int) $row['pending'];
+            $stats['order_delivering'] = (int) $row['delivering'];
+            $stats['order_completed']  = (int) $row['completed'];
+        }
+
+        $monthRow = Database::fetchOne(
+            "SELECT COALESCE(SUM(pay_amount), 0) AS s
+               FROM `{$prefix}order`
+              WHERE user_id = ? AND status IN ('paid','delivering','delivered','completed')
+                AND DATE_FORMAT(pay_time, '%Y-%m') = DATE_FORMAT(NOW(), '%Y-%m')",
+            [$userId]
+        );
+        $stats['month_spent'] = (int) ($monthRow['s'] ?? 0);
+
+        $todayRow = Database::fetchOne(
+            "SELECT COALESCE(SUM(pay_amount), 0) AS s
+               FROM `{$prefix}order`
+              WHERE user_id = ? AND status IN ('paid','delivering','delivered','completed')
+                AND DATE(pay_time) = CURDATE()",
+            [$userId]
+        );
+        $stats['today_spent'] = (int) ($todayRow['s'] ?? 0);
+    } catch (Throwable $e) {
     }
 
-    $monthRow = Database::fetchOne(
-        "SELECT COALESCE(SUM(pay_amount), 0) AS s
-           FROM `{$prefix}order`
-          WHERE user_id = ? AND status IN ('paid','delivering','delivered','completed')
-            AND DATE_FORMAT(pay_time, '%Y-%m') = DATE_FORMAT(NOW(), '%Y-%m')",
-        [$userId]
-    );
-    $stats['month_spent'] = (int) ($monthRow['s'] ?? 0);
-
-    $todayRow = Database::fetchOne(
-        "SELECT COALESCE(SUM(pay_amount), 0) AS s
-           FROM `{$prefix}order`
-          WHERE user_id = ? AND status IN ('paid','delivering','delivered','completed')
-            AND DATE(pay_time) = CURDATE()",
-        [$userId]
-    );
-    $stats['today_spent'] = (int) ($todayRow['s'] ?? 0);
-} catch (Throwable $e) {
+    try {
+        $recentOrders = Database::query(
+            "SELECT id, order_no, pay_amount, status, created_at, display_currency_code, display_rate
+               FROM `{$prefix}order`
+              WHERE user_id = ?
+              ORDER BY id DESC LIMIT 5",
+            [$userId]
+        );
+    } catch (Throwable $e) {}
 }
-
-$recentOrders = [];
-try {
-    $recentOrders = Database::query(
-        "SELECT id, order_no, pay_amount, status, created_at, display_currency_code, display_rate
-           FROM `{$prefix}order`
-          WHERE user_id = ?
-          ORDER BY id DESC LIMIT 5",
-        [$userId]
-    );
-} catch (Throwable $e) {}
 
 $statusLabels = [
     'pending'    => ['label' => '待付款', 'color' => '#92682a', 'bg' => 'rgba(234, 179, 98, 0.18)'],
