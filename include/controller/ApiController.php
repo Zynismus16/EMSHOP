@@ -17,7 +17,8 @@ declare(strict_types=1);
  * 鉴权参数（所有 act 通用）：
  *   appid      = user.id
  *   timestamp  = UNIX 时间戳（秒）
- *   sign       = md5(按参数名排序后的 key=value&... + SECRET)，排除 sign/sign_type 和空值
+ *   sign       = md5(按参数名排序后的 key=value&... + SECRET)，排除 sign/sign_type 和空值；
+ *                act / c / a 同样参与签名。写操作（real_order / create_order）不接受不含 act 的旧版签名。
  */
 class ApiController extends BaseController
 {
@@ -275,6 +276,11 @@ class ApiController extends BaseController
         $order = OrderModel::getByOrderNo($orderNo);
         if ($order === null) {
             Response::error('订单不存在');
+        }
+
+        // 只能是本 appid 创建的订单；只按 Host scope 校验会允许任何 API 账号查别人的单
+        if ((int) ($order['user_id'] ?? 0) !== (int) ($apiUser['id'] ?? 0)) {
+            Response::error('无权查询该订单');
         }
 
         // 订单归属校验：防止跨商户/跨主站查询
@@ -779,12 +785,24 @@ class ApiController extends BaseController
             Response::error('该账号未生成 API SECRET');
         }
 
-        $calc = $this->sign($params, $secret);
-        if (!hash_equals($calc, $sign)) {
-            Response::error('签名错误');
+        // 新版签名覆盖 act；写操作必须用新版签名，避免把 simulate_order 改成 real_order 后重放。
+        $act = strtolower(trim((string) ($params['act'] ?? '')));
+        $stateChanging = in_array($act, ['real_order', 'create_real_order', 'create_order'], true);
+
+        if (hash_equals($this->sign($params, $secret), $sign)) {
+            return $user;
         }
 
-        return $user;
+        // 旧版签名不含 act / c / a：只读 act 继续兼容；写操作默认拒绝，
+        // 极端情况下可用 Config 的 api_allow_legacy_sign=1 临时放行（不推荐）。
+        if (hash_equals($this->signLegacy($params, $secret), $sign)) {
+            if (!$stateChanging || (string) Config::get('api_allow_legacy_sign', '0') === '1') {
+                return $user;
+            }
+            Response::error('签名校验失败：写操作需要把 act（以及请求里的 c / a）一起参与签名，旧版签名已不再接受');
+        }
+
+        Response::error('签名错误');
     }
 
     /**
@@ -792,8 +810,24 @@ class ApiController extends BaseController
      */
     private function sign(array $params, string $secret): string
     {
-        // c/a/act 属于路由参数，不参与签名，避免 query 与 body 混传时校验歧义
+        // 新版签名覆盖 act / c / a：只改 act 不再能复用原签名。
+        unset($params['sign'], $params['sign_type']);
+
+        return $this->buildSign($params, $secret);
+    }
+
+    /**
+     * 旧版签名：不覆盖 act / c / a，仅用于只读 act 的兼容。
+     */
+    private function signLegacy(array $params, string $secret): string
+    {
         unset($params['sign'], $params['sign_type'], $params['c'], $params['a'], $params['act']);
+
+        return $this->buildSign($params, $secret);
+    }
+
+    private function buildSign(array $params, string $secret): string
+    {
         ksort($params, SORT_STRING);
 
         $parts = [];
