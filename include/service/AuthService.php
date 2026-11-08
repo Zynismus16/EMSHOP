@@ -163,11 +163,15 @@ final class AuthService
         session_regenerate_id(true);
         $_SESSION[$this->config['session_key']] = $this->sessionPayload($user);
 
+        // 只有勾选“记住我”才签发长期令牌；不勾选时保持 null，
+        // updateLoginMeta 会顺带清掉上一次残留的令牌。
         $rememberToken = null;
-        $days = $remember ? (int) $this->config['remember_days_checked'] : (int) $this->config['remember_days_default'];
-        if ($days > 0) {
-            $rememberToken = bin2hex(random_bytes(32));
-            $this->queueRememberCookie($rememberToken, $days);
+        if ($remember) {
+            $days = (int) $this->config['remember_days_checked'];
+            if ($days > 0) {
+                $rememberToken = bin2hex(random_bytes(32));
+                $this->queueRememberCookie($rememberToken, $days);
+            }
         }
 
         $this->users->updateLoginMeta((int) $user['id'], $this->clientIp(), $rememberToken);

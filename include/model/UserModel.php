@@ -49,6 +49,7 @@ final class UserModel
      */
     public function findAdminByRememberToken(string $token): ?array
     {
+        // 库里存的是 SHA-256 摘要，不存原始令牌：拿到数据库也无法直接当 cookie 用。
         $sql = sprintf(
             'SELECT * FROM `%s` WHERE `status` = :status AND `role` = :role AND `remember_token` = :remember_token LIMIT 1',
             $this->table
@@ -57,7 +58,7 @@ final class UserModel
         return Database::fetchOne($sql, [
             'status' => 1,
             'role' => 'admin',
-            'remember_token' => $token,
+            'remember_token' => hash('sha256', $token),
         ]);
     }
 
@@ -87,6 +88,11 @@ final class UserModel
      */
     public function updateLoginMeta(int $userId, string $ip, ?string $rememberToken): void
     {
+        // remember_token 只存摘要：cookie 里的原始令牌不落库。
+        $rememberHash = $rememberToken !== null && $rememberToken !== ''
+            ? hash('sha256', $rememberToken)
+            : null;
+
         $sql = sprintf(
             'UPDATE `%s` SET `last_login_ip` = :last_login_ip, `last_login_at` = NOW(), `remember_token` = :remember_token, `updated_at` = NOW() WHERE `id` = :id LIMIT 1',
             $this->table
@@ -95,7 +101,7 @@ final class UserModel
         Database::execute($sql, [
             'id' => $userId,
             'last_login_ip' => $ip,
-            'remember_token' => $rememberToken,
+            'remember_token' => $rememberHash,
         ]);
     }
 
