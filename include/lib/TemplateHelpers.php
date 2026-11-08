@@ -542,6 +542,14 @@ function safe_url(string $url, string $fallback = '#'): string
 }
 
 /**
+ * 富文本输出前的统一清洗：保留排版，去掉脚本、事件属性和伪协议。
+ */
+function sanitize_rich_text(string $html): string
+{
+    return HtmlSanitizer::clean($html);
+}
+
+/**
  * 当前主题的全部配置，一次取完。
  *
  * 主题侧只调一次，之后任意取键（值已按 TemplateStorage::getValue() 的规则解码）：

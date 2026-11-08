@@ -349,7 +349,7 @@ $_shopDispSales = (string) Config::get('shop_display_sales', '1') !== '0';
     <?php if (!empty($goods['content'])): ?>
     <!-- 商品详情内容 -->
     <div class="article-detail" style="margin-top:16px;">
-        <div class="detail-body"><?= $goods['content'] ?></div>
+        <div class="detail-body"><?= sanitize_rich_text((string) $goods['content']) ?></div>
     </div>
     <?php endif; ?>
 

@@ -37,7 +37,7 @@ $content = (string) ($page['content'] ?? '');
             <?php endif; ?>
         </div>
         <?php endif; ?>
-        <div class="detail-body"><?= $content /* 富文本 HTML，不转义 */ ?></div>
+        <div class="detail-body"><?= sanitize_rich_text((string) $content) ?></div>
     </article>
 
 </div>

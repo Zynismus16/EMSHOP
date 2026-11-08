@@ -47,7 +47,7 @@ $popular_blog_tags = $_d['popular_blog_tags'];
                     <span>分类：<?= htmlspecialchars($article['category'] ?? '技术') ?></span>
                     <span>阅读：<?= (int) ($article['views'] ?? 0) ?></span>
                 </div>
-                <div class="detail-body"><?= $article['content'] ?></div>
+                <div class="detail-body"><?= sanitize_rich_text((string) $article['content']) ?></div>
                 <?php if (!empty($article['tags'])): ?>
                 <div class="detail-tags">
                     <?php foreach ($article['tags'] as $tag): ?>

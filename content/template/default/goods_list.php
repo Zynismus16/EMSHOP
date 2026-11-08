@@ -63,7 +63,7 @@ if (is_array($_announce) && !empty($_announce['html']) && in_array('goods_list',
             <span class="site-announcement__title">店铺公告</span>
             <span class="site-announcement__title-sep"></span>
         </div>
-        <div class="site-announcement__body"><?= $_announce['html'] ?></div>
+        <div class="site-announcement__body"><?= sanitize_rich_text((string) $_announce['html']) ?></div>
     </div>
 </div>
 <?php endif; ?>

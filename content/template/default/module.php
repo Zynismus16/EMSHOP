@@ -147,7 +147,7 @@ foreach ($navItems as $item) {
 
     if ($hasChildren) {
         $navHtml .= '<div class="nav-dropdown" data-nav="' . $item['id'] . '">';
-        $navHtml .= '<a href="' . htmlspecialchars($item['url']) . '" data-pjax data-nav="' . $item['id'] . '" class="' . trim($active) . '"' . $itemNavPathAttr . $targetAttr . '>'
+        $navHtml .= '<a href="' . htmlspecialchars(safe_url((string) $item['url'])) . '" data-pjax data-nav="' . $item['id'] . '" class="' . trim($active) . '"' . $itemNavPathAttr . $targetAttr . '>'
                   . htmlspecialchars($item['text'])
                   . '<svg class="nav-arrow" width="10" height="10" viewBox="0 0 10 10"><path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>'
                   . '</a>';
@@ -163,18 +163,18 @@ foreach ($navItems as $item) {
                 ? (' data-nav-path="' . htmlspecialchars($childPath, ENT_QUOTES, 'UTF-8') . '"')
                 : '';
             $childTarget = ($child['target'] === '_blank') ? ' target="_blank"' : '';
-            $navHtml .= '<a href="' . htmlspecialchars($child['url']) . '" data-pjax' . $childNavPathAttr . $childTarget . '>' . htmlspecialchars($child['text']) . '</a>';
+            $navHtml .= '<a href="' . htmlspecialchars(safe_url((string) $child['url'])) . '" data-pjax' . $childNavPathAttr . $childTarget . '>' . htmlspecialchars($child['text']) . '</a>';
         }
         $navHtml .= '</div></div>';
     } else {
-        $navHtml .= '<a href="' . htmlspecialchars($item['url']) . '" data-pjax data-nav="' . $item['id'] . '" class="' . trim($active) . '"' . $itemNavPathAttr . $targetAttr . '>' . htmlspecialchars($item['text']) . '</a>';
+        $navHtml .= '<a href="' . htmlspecialchars(safe_url((string) $item['url'])) . '" data-pjax data-nav="' . $item['id'] . '" class="' . trim($active) . '"' . $itemNavPathAttr . $targetAttr . '>' . htmlspecialchars($item['text']) . '</a>';
     }
 }
 
 // 生成 footer 导航 HTML
 $navFooterHtml = '';
 foreach ($navItems as $item) {
-    $navFooterHtml .= '<a href="' . htmlspecialchars($item['url']) . '" data-pjax>' . htmlspecialchars($item['text']) . '</a>';
+    $navFooterHtml .= '<a href="' . htmlspecialchars(safe_url((string) $item['url'])) . '" data-pjax>' . htmlspecialchars($item['text']) . '</a>';
 }
 
 // ============================================================
