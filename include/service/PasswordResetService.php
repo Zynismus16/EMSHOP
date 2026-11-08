@@ -87,6 +87,13 @@ final class PasswordResetService
             return $uniformOk;
         }
 
+        // 没有配置站点地址时无法生成安全链接（绝不能用 HTTP_HOST 拼），
+        // 按统一提示返回，不创建令牌也不发信。
+        if ($this->resetBaseUrl() === '') {
+            $this->logResetUrlMissing($email);
+            return $uniformOk;
+        }
+
         $rawToken = bin2hex(random_bytes(32));
         $tokenHash = hash('sha256', $rawToken);
         $expiresAt = date('Y-m-d H:i:s', time() + self::TOKEN_TTL);
@@ -122,7 +129,21 @@ final class PasswordResetService
             return null;
         }
 
-        return $this->resetModel->findValidByTokenHash(hash('sha256', $rawToken));
+        $row = $this->resetModel->findValidByTokenHash(hash('sha256', $rawToken));
+        if ($row === null) {
+            return null;
+        }
+
+        // 历史遗留或直接构造的管理员令牌：一律无效
+        $user = $this->userModel->findById((int) ($row['user_id'] ?? 0));
+        if ($user === null
+            || (int) ($user['status'] ?? 0) !== 1
+            || (string) ($user['role'] ?? '') === 'admin'
+        ) {
+            return null;
+        }
+
+        return $row;
     }
 
     /**
@@ -174,15 +195,15 @@ final class PasswordResetService
     private function findUserByEmail(string $email): ?array
     {
         $table = Database::prefix() . 'user';
-        // 不按 role 过滤：管理账号也能走前台找回密码（后台登录页本身没有找回入口）。
-        // ORDER BY id ASC 让存量重复邮箱的取值确定——改为跨角色后，重复邮箱已由
-        // UserListModel::existsEmail 在写入侧拦住，但历史数据里可能已经存在。
+        // 只允许普通用户走前台找回密码。管理账号只能通过 PHP 工具箱重置，
+        // 不能走这条免登录的邮箱重置链路。
+        // ORDER BY id ASC 让存量重复邮箱的取值确定。
         $sql = sprintf(
-            'SELECT `id`, `email`, `status` FROM `%s` WHERE `email` = ? ORDER BY `id` ASC LIMIT 1',
+            'SELECT `id`, `email`, `status` FROM `%s` WHERE `email` = ? AND `role` = ? ORDER BY `id` ASC LIMIT 1',
             $table
         );
 
-        return Database::fetchOne($sql, [$email]);
+        return Database::fetchOne($sql, [$email, 'user']);
     }
 
     private function isMailConfigured(): bool
@@ -228,8 +249,10 @@ final class PasswordResetService
      */
     private function buildResetUrl(string $rawToken): string
     {
-        $configured = rtrim(trim((string) Config::get('site_url', '')), '/');
-        $base = $configured !== '' ? $configured : rtrim(Request::baseUrl(), '/');
+        $base = $this->resetBaseUrl();
+        if ($base === '') {
+            return '';
+        }
 
         $query = http_build_query([
             'c' => 'login',
@@ -238,6 +261,46 @@ final class PasswordResetService
         ]);
 
         return $base . '/?' . $query;
+    }
+
+    /**
+     * 重置链接的基址：只使用后台配置（site_url / main_domain），绝不使用 HTTP_HOST。
+     */
+    private function resetBaseUrl(): string
+    {
+        $configured = rtrim(trim((string) Config::get('site_url', '')), '/');
+        if ($configured !== '') {
+            return $configured;
+        }
+
+        $main = trim((string) Config::get('main_domain', ''));
+        if ($main === '') {
+            return '';
+        }
+        if (!preg_match('#^https?://#i', $main)) {
+            $main = 'https://' . ltrim($main, '/');
+        }
+
+        return rtrim($main, '/');
+    }
+
+    /**
+     * 站点地址未配置导致无法生成重置链接时的日志（对外仍返回统一提示）。
+     */
+    private function logResetUrlMissing(string $email): void
+    {
+        try {
+            if (class_exists('SystemLogModel')) {
+                (new SystemLogModel())->error(
+                    'system',
+                    '重置密码链接无法生成',
+                    'site_url / main_domain 均未配置，已跳过发送',
+                    ['email_hash' => substr(hash('sha256', strtolower(trim($email))), 0, 12)]
+                );
+            }
+        } catch (Throwable $ignore) {
+            // 日志失败不影响主流程
+        }
     }
 
     private function buildResetEmailHtml(string $siteName, string $resetUrl, int $validMinutes): string
