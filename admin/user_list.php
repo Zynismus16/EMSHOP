@@ -354,8 +354,18 @@ if (Request::isPost()) {
                 if ($merchantModel->existsSubdomain($subdomain)) {
                     Response::error('二级域名已被占用');
                 }
+                $domainErr = MerchantDomainGuard::subdomainError($subdomain);
+                if ($domainErr !== '') {
+                    Response::error($domainErr);
+                }
                 if ($customDomain !== null && $merchantModel->existsCustomDomain($customDomain)) {
                     Response::error('该自定义域名已被占用');
+                }
+                if ($customDomain !== null) {
+                    $domainErr = MerchantDomainGuard::customDomainError($customDomain);
+                    if ($domainErr !== '') {
+                        Response::error($domainErr);
+                    }
                 }
 
                 $openData = [

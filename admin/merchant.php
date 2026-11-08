@@ -156,6 +156,10 @@ if (Request::isPost()) {
                     if ($model->existsSubdomain($data['subdomain'], $id)) {
                         Response::error('二级域名已被占用');
                     }
+                    $domainErr = MerchantDomainGuard::subdomainError($data['subdomain'], $id);
+                    if ($domainErr !== '') {
+                        Response::error($domainErr);
+                    }
                 }
                 if ($data['custom_domain'] !== null) {
                     if (!preg_match('/^[a-z0-9]([a-z0-9\-\.]{1,199})$/', $data['custom_domain'])) {
@@ -163,6 +167,10 @@ if (Request::isPost()) {
                     }
                     if ($model->existsCustomDomain($data['custom_domain'], $id)) {
                         Response::error('该域名已被占用');
+                    }
+                    $domainErr = MerchantDomainGuard::customDomainError($data['custom_domain'], $id);
+                    if ($domainErr !== '') {
+                        Response::error($domainErr);
                     }
                     if ((int) ($merchantLevelRow['allow_custom_domain'] ?? 0) !== 1) {
                         Response::error('当前商户等级不允许绑定自定义域名');

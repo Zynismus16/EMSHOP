@@ -82,6 +82,10 @@ if (Request::isPost()) {
                         if ($merchantModel->existsSubdomain($subdomain, $merchantId)) {
                             Response::error('二级域名已被占用');
                         }
+                        $domainErr = MerchantDomainGuard::subdomainError($subdomain, $merchantId);
+                        if ($domainErr !== '') {
+                            Response::error($domainErr);
+                        }
                     }
                     $data['subdomain'] = $subdomain !== '' ? $subdomain : null;
                 } else {
@@ -99,6 +103,10 @@ if (Request::isPost()) {
                         $merchantModel = new MerchantModel();
                         if ($merchantModel->existsCustomDomain($customDomain, $merchantId)) {
                             Response::error('该域名已被占用');
+                        }
+                        $domainErr = MerchantDomainGuard::customDomainError($customDomain, $merchantId);
+                        if ($domainErr !== '') {
+                            Response::error($domainErr);
                         }
                     }
                     $data['custom_domain'] = $customDomain !== '' ? $customDomain : null;

@@ -54,6 +54,12 @@ final class MerchantContext
         $host = self::currentHost();
         if ($host === '') return;
 
+        // 主站域名永远按主站处理：即使 em_merchant 里存在 custom_domain 等于主站域名的
+        // 脏数据（历史遗留或直接改库），也不能让商户接管主站。
+        if (MerchantDomainGuard::isMainHost($host)) {
+            return;
+        }
+
         // 1. 自定义顶级域名 —— 命中后再做等级门控，命中但被拦也要明确告知（blockedReason）
         $merchant = self::findByCustomDomain($host);
         if ($merchant !== null) {
@@ -357,34 +363,7 @@ final class MerchantContext
      */
     private static function normalizeHost(string $value): string
     {
-        $value = trim($value);
-        if ($value === '') {
-            return '';
-        }
-
-        // 带协议时优先 parse_url 取 host
-        if (strpos($value, '://') !== false) {
-            $parsedHost = (string) (parse_url($value, PHP_URL_HOST) ?? '');
-            if ($parsedHost !== '') {
-                $value = $parsedHost;
-            }
-        }
-
-        // 去路径/query/fragment
-        $value = preg_split('/[\/\?#]/', $value, 2)[0] ?? $value;
-
-        // 去端口
-        $pos = strpos($value, ':');
-        if ($pos !== false) {
-            $value = substr($value, 0, $pos);
-        }
-
-        // 兼容误填 *.example.com
-        if (strpos($value, '*.') === 0) {
-            $value = substr($value, 2);
-        }
-
-        return strtolower(trim($value, ". \t\n\r\0\x0B"));
+        return MerchantDomainGuard::normalizeHost($value);
     }
 
     /**
