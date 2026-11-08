@@ -318,7 +318,7 @@ $(function(){
             id: 'cardTableId',
             url: cardUrl('card_list'),
             method: 'POST',
-            where: { goods_id: goodsId, status: '1' },
+            where: { goods_id: goodsId, status: '1', csrf_token: csrfToken },
             page: true,
             limit: 10,
             limits: [10, 20, 50, 100],
@@ -391,7 +391,7 @@ $(function(){
                 // 每页上限 20：本页每个订单都要扫一遍自己的卡密才算得出「卡密数」，
                 // 单订单是万级，放到 50/100 就是几百万行。前后端都夹住，否则 layui 页数会算错。
                 opts.url    = cardUrl('card_deleted_orders');
-                opts.where  = { goods_id: goodsId };
+                opts.where  = { goods_id: goodsId, csrf_token: csrfToken };
                 opts.limit  = 20;
                 opts.limits = [10, 20];
             } else {
@@ -400,6 +400,7 @@ $(function(){
                 opts.limits = [10, 20, 50, 100];
                 opts.where = {
                     goods_id: goodsId,
+                    csrf_token: csrfToken,
                     status:   currentTabStatus,
                     keyword:  $('#cardSearchKeyword').val() || '',
                     spec_id:  $('#cardSearchSpec').val() || '',
@@ -459,6 +460,7 @@ $(function(){
                     }
                     var orderId = Math.max(0, parseInt($('#exportOrderId').val(), 10) || 0);
                     var url = cardUrl('card_export');
+                    url += '&csrf_token=' + encodeURIComponent(csrfToken);
                     url += '&goods_id=' + encodeURIComponent(goodsId);
                     if (orderId > 0) {
                         // 按订单导出：订单ID 一说就只认它，其余条件一概不带

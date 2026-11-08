@@ -33,6 +33,28 @@ $virtualCardAssertGoodsAccess = static function (int $goodsId, bool $asPage = fa
 };
 
 /**
+ * 卡密导出审计：记录操作人、导出范围与条数。写日志失败不阻断导出。
+ */
+function virtualCardAuditExport(string $action, array $detail, int $count): void
+{
+    try {
+        $admin = $_SESSION['em_admin_auth'] ?? null;
+        $front = $_SESSION['em_front_user'] ?? null;
+        $operator = is_array($admin) ? $admin : (is_array($front) ? $front : []);
+        (new SystemLogModel())->info(
+            'admin_operation',
+            $action,
+            '导出卡密 ' . $count . ' 条',
+            $detail,
+            (int) ($operator['id'] ?? 0),
+            (string) ($operator['username'] ?? '')
+        );
+    } catch (Throwable $e) {
+        // 审计失败不阻断导出
+    }
+}
+
+/**
  * 「已删订单」查询所依赖的索引是否就绪。
  * 结果按请求缓存 —— 老库没跑过升级时整条查询会退化成全表扫，必须提前知道。
  */
@@ -153,6 +175,10 @@ function virtualCardOrderIdCondition(array $ids, string $column = 'order_id'): a
 // 卡密列表（供 AJAX 分页查询）
 // ================================================================
 if ($action === 'card_list') {
+    $csrf = (string)($_POST['csrf_token'] ?? '');
+    if (!Csrf::validate($csrf)) {
+        Response::error('请求已失效，请刷新页面后重试');
+    }
     $goodsId = (int)($_POST['goods_id'] ?? 0);
     if (!$goodsId) {
         Response::error('商品ID不能为空');
@@ -263,6 +289,10 @@ if ($action === 'card_list') {
 // 已删订单列表（按订单聚合，供库存管理「已删订单」选项卡）
 // ================================================================
 if ($action === 'card_deleted_orders') {
+    $csrf = (string)($_POST['csrf_token'] ?? '');
+    if (!Csrf::validate($csrf)) {
+        Response::error('请求已失效，请刷新页面后重试');
+    }
     $goodsId = (int)($_POST['goods_id'] ?? 0);
     if (!$goodsId) {
         Response::error('商品ID不能为空');
@@ -581,6 +611,11 @@ if ($action === 'card_clear_available') {
 // 导出卡密
 // ================================================================
 if ($action === 'card_export') {
+    $csrf = (string)($_GET['csrf_token'] ?? '');
+    if (!Csrf::validate($csrf)) {
+        http_response_code(403);
+        exit('请求已失效，请刷新页面后重试');
+    }
     $goodsId = (int)($_GET['goods_id'] ?? 0);
     if (!$goodsId) {
         exit('商品ID不能为空');
@@ -668,6 +703,13 @@ if ($action === 'card_export') {
     }
     $output = implode("\r\n", $lines);
     $count = count($lines);
+
+    virtualCardAuditExport('card_export', [
+        'goods_id'    => $goodsId,
+        'goods_title' => (string) ($goods['title'] ?? ''),
+        'count'       => $count,
+        'order_id'    => $orderIdFilter > 0 ? $orderIdFilter : 0,
+    ], $count);
 
     $title = (string) ($goods['title'] ?? '');
     $placeYmd = virtual_card_datetime_to_ymd((string) ($goods['created_at'] ?? ''));
@@ -864,6 +906,11 @@ if ($action === 'card_manager') {
 // 订单详情 popup 的"导出全部 (TXT)"按钮调用
 // ================================================================
 if ($action === 'order_export_cards') {
+    $csrf = (string)($_GET['csrf_token'] ?? '');
+    if (!Csrf::validate($csrf)) {
+        http_response_code(403);
+        exit('请求已失效，请刷新页面后重试');
+    }
     $orderId = (int) ($_GET['order_id'] ?? 0);
     if ($orderId <= 0) {
         http_response_code(400);
@@ -933,6 +980,13 @@ if ($action === 'order_export_cards') {
     }
     $body = implode("\n", $lines);
     $count = count($lines);
+
+    virtualCardAuditExport('order_export_cards', [
+        'order_id' => $orderId,
+        'order_no' => (string) ($order['order_no'] ?? ''),
+        'count'    => $count,
+    ], $count);
+
     if (count($titleSet) === 1) {
         $nameBase = array_key_first($titleSet);
     } else {

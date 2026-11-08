@@ -986,7 +986,8 @@ addFilter('admin_order_goods_delivery_html', function ($html, $og) {
     $esc = static fn(string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
     $orderId = (int) ($og['order_id'] ?? 0);
     // 走 admin/index.php 的插件 action 分发（由 admin_plugin_action_{action} 钩子接管）
-    $exportUrl = '/admin/index.php?_action=order_export_cards&order_id=' . $orderId;
+    $exportUrl = '/admin/index.php?_action=order_export_cards&order_id=' . $orderId
+        . '&csrf_token=' . urlencode(Csrf::token());
 
     $body = $esc(implode("\n", $visible));
 
