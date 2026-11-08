@@ -902,19 +902,22 @@ final class LicenseClient
     {
         foreach (['curl.cainfo', 'openssl.cafile'] as $key) {
             $path = trim((string) ini_get($key));
-            if ($path !== '' && is_file($path) && is_readable($path)) {
+            if ($path !== '' && @is_file($path) && @is_readable($path)) {
                 return $path;
             }
         }
 
-        // 优先用系统维护的 CA 包（Linux 发行版会持续更新根证书）
-        foreach ([
-            '/etc/ssl/certs/ca-certificates.crt',
-            '/etc/pki/tls/certs/ca-bundle.crt',
-            '/etc/ssl/cert.pem',
-        ] as $path) {
-            if (is_file($path) && is_readable($path)) {
-                return $path;
+        // 只在类 Unix 系统探测系统 CA 路径。Windows 上访问 /etc 会触发
+        // open_basedir 警告，而警告输出会直接污染后台的 JSON 响应。
+        if (DIRECTORY_SEPARATOR === '/') {
+            foreach ([
+                '/etc/ssl/certs/ca-certificates.crt',
+                '/etc/pki/tls/certs/ca-bundle.crt',
+                '/etc/ssl/cert.pem',
+            ] as $path) {
+                if (@is_file($path) && @is_readable($path)) {
+                    return $path;
+                }
             }
         }
 
@@ -923,7 +926,7 @@ final class LicenseClient
         // 更新方式：重新下载 https://curl.se/ca/cacert.pem 覆盖本文件。
         $root = defined('EM_ROOT') ? EM_ROOT : dirname(__DIR__, 2);
         $bundled = $root . '/include/data/cacert.pem';
-        if (is_file($bundled) && is_readable($bundled)) {
+        if (@is_file($bundled) && @is_readable($bundled)) {
             return $bundled;
         }
 
