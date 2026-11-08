@@ -66,6 +66,23 @@ if (!function_exists('str_contains')) {
 // 尽早启动 session（Csrf 验证和登录状态依赖 session，尽早启动可避免 CSRF 验证失败）
 // CLI 环境下跳过 session
 if (php_sapi_name() !== 'cli' && session_status() === PHP_SESSION_NONE) {
+    // 每个站点独立的 session 名称 + 目录：避免同主机其它应用共用 PHPSESSID / 默认
+    // save_path 时互相读写 session 文件。目录放系统临时目录（不可经 Web 访问）；
+    // 建不出来就退回 PHP 默认值，不影响正常启动。
+    $emSessionName = 'EMSHOP_' . substr(hash('sha256', EM_ROOT), 0, 16);
+    session_name($emSessionName);
+
+    ini_set('session.use_strict_mode', '1');
+    ini_set('session.use_only_cookies', '1');
+
+    $emSessionDir = rtrim(sys_get_temp_dir(), '/\\') . DIRECTORY_SEPARATOR . $emSessionName;
+    if (!is_dir($emSessionDir)) {
+        @mkdir($emSessionDir, 0700, true);
+    }
+    if (is_dir($emSessionDir) && is_writable($emSessionDir)) {
+        session_save_path($emSessionDir);
+    }
+
     // 会话 Cookie 安全属性。此前完全依赖 PHP 默认值：HttpOnly 默认开、SameSite 默认空
     // （由浏览器按 Lax 处理）、Secure 默认关。显式写出来有两个好处：
     //   1) 老浏览器 SameSite 默认是 None 时，这里强制降到 Lax

@@ -82,10 +82,20 @@ final class AuthService
 
         if ($userId > 0) {
             $user = $this->users->findAdminById($userId);
-            if ($user !== null && hash_equals(
-                (string) ($payload['pwd'] ?? ''),
-                $this->passwordFingerprint((string) ($user['password'] ?? ''))
-            )) {
+            if ($user !== null
+                && hash_equals(
+                    (string) ($payload['pwd'] ?? ''),
+                    $this->passwordFingerprint((string) ($user['password'] ?? ''))
+                )
+                && hash_equals(
+                    self::signSessionPayload(
+                        $payload,
+                        (string) ($user['password'] ?? ''),
+                        CsrfSecret::get()
+                    ),
+                    (string) ($payload['sig'] ?? '')
+                )
+            ) {
                 return true;
             }
         }
@@ -214,7 +224,7 @@ final class AuthService
      */
     private function sessionPayload(array $user): array
     {
-        return [
+        $payload = [
             'id' => (int) $user['id'],
             'username' => (string) $user['username'],
             'nickname' => (string) $user['nickname'],
@@ -225,6 +235,30 @@ final class AuthService
             // 密码指纹：密码变了，其它终端上的旧会话会在下次请求时失效
             'pwd' => $this->passwordFingerprint((string) ($user['password'] ?? '')),
         ];
+
+        // 服务端签名：同机其它应用即使能写 session 文件，没有密钥和密码哈希也伪造不出来。
+        $payload['sig'] = self::signSessionPayload(
+            $payload,
+            (string) ($user['password'] ?? ''),
+            CsrfSecret::ensure()
+        );
+
+        return $payload;
+    }
+
+    /**
+     * 计算 session payload 的服务端签名。
+     */
+    private static function signSessionPayload(array $payload, string $passwordHash, string $secret): string
+    {
+        unset($payload['sig']);
+        ksort($payload, SORT_STRING);
+
+        return hash_hmac(
+            'sha256',
+            json_encode($payload, JSON_UNESCAPED_UNICODE) ?: '',
+            $secret . '|' . $passwordHash
+        );
     }
 
     /**
