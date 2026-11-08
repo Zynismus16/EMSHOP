@@ -30,6 +30,10 @@ class WithdrawController extends BaseController
     {
         if (!Request::isPost()) Response::error('无效请求');
 
+        if (!Csrf::validateOrSameOrigin((string) Input::post('csrf_token', ''))) {
+            Response::error('请求已失效，请刷新页面后重试');
+        }
+
         $user   = $this->requireLogin();
         $userId = (int) $user['id'];
 

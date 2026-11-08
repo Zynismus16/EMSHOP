@@ -16,6 +16,22 @@ var GoodsOrder = (function () {
     var ORDER_DETAIL_URL = '/user/order_detail.php?order_no=';
     var GUEST_FIND_URL   = '/user/find_order.php';
 
+    /** 取当前会话的 CSRF token：优先页面注入，其次读 cookie（token.hmac 的第一段）。 */
+    function readCsrfToken() {
+        if (window.EMSHOP_CSRF_TOKEN) {
+            return window.EMSHOP_CSRF_TOKEN;
+        }
+        var m = document.cookie.match(/(?:^|;\s*)em_csrf_token=([^;]+)/);
+        if (!m) {
+            return '';
+        }
+        try {
+            return decodeURIComponent(m[1]).split('.')[0] || '';
+        } catch (e) {
+            return '';
+        }
+    }
+
     return {
         /**
          * 取当前用户「未使用、未过期、未失效」的券（下单页选券弹层用）。
@@ -68,6 +84,14 @@ var GoodsOrder = (function () {
         create: function (postData, options, callbacks) {
             options = options || {};
             callbacks = callbacks || {};
+
+            postData = postData || {};
+            if (!postData.csrf_token) {
+                var csrfToken = readCsrfToken();
+                if (csrfToken) {
+                    postData.csrf_token = csrfToken;
+                }
+            }
 
             $.post('?c=order&a=create', postData, function (res) {
                 if (callbacks.onFinish) callbacks.onFinish();

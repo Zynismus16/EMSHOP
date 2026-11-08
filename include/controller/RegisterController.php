@@ -50,6 +50,10 @@ class RegisterController extends BaseController
     {
         
 
+        if (!Csrf::validateOrSameOrigin((string) Input::post('csrf_token', ''))) {
+            Response::error('请求已失效，请刷新页面后重试');
+        }
+
         $registerEnabled = Config::get('user_register', '0');
         if ($registerEnabled == 0) {
             Response::error('当前站点已关闭注册功能');

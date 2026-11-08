@@ -53,6 +53,8 @@ window.EMSHOP_CURRENCY = {
     symbol: <?= json_encode($currency_symbol ?? '¥') ?>,
     rate:   <?= json_encode((float) ($currency_rate ?? 1)) ?>
 };
+// 下单等前台写操作会带这个 token；主题优先用它，读不到时后端还有同源兜底
+window.EMSHOP_CSRF_TOKEN = <?= json_encode(Csrf::token()) ?>;
 </script>
 </head>
 <body>

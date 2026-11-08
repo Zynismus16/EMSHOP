@@ -97,6 +97,7 @@ if (!defined('EM_ROOT')) {
 // 把后端数据交给 JS（避免字符串拼接和 XSS）
 $walletJsCtx = [
     'currency'    => $currencySymbol,
+    'csrfToken'   => Csrf::token(),
     'minRecharge' => (float) $displayMinRecharge,
     'maxRecharge' => (float) $displayMaxRecharge,
     'minWithdraw' => (float) $displayMinWithdraw,
@@ -238,6 +239,7 @@ $walletJsCtx = [
                 // 此前是直接把访客币种数值当主货币提交，外币访客会差一个汇率倍数。
                 var amtInput = parseFloat($f.find('[name=amount]').val() || '0');
                 var payload = {
+                    csrf_token:   CTX.csrfToken,
                     amount:       toPrimaryAmount(amtInput),
                     channel:      $f.find('[name=channel]:checked').val() || '',
                     account_name: $.trim($f.find('[name=account_name]').val() || ''),

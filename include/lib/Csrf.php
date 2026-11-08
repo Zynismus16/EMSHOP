@@ -93,6 +93,59 @@ final class Csrf
     }
 
     /**
+     * 校验 token；旧主题没有 token 时退化为「仅允许同源请求」。
+     *
+     * 用于前台下单 / 提现 / 注册这类既要有 CSRF 防护、又要兼容旧主题的入口：
+     *   - 有 token：走正常校验；
+     *   - 没 token：只接受同源请求。商户二级域名等「同站不同源」页面会被拒绝，
+     *     跨站页面同样拒绝。
+     */
+    public static function validateOrSameOrigin(string $token): bool
+    {
+        if ($token !== '' && self::validate($token)) {
+            return true;
+        }
+
+        return self::isSameOriginRequest();
+    }
+
+    /**
+     * 当前请求是否同源。
+     *
+     * 优先看 Sec-Fetch-Site（浏览器强制写入，页面 JS 改不了）：
+     *   same-origin / none = 用户自己在同源页面发起 → 允许；
+     *   same-site / cross-site = 同站子域或外站 → 拒绝。
+     * 老浏览器没有这个头时，退回比较 Origin / Referer 与当前 Host。
+     */
+    private static function isSameOriginRequest(): bool
+    {
+        $site = strtolower(trim((string) ($_SERVER['HTTP_SEC_FETCH_SITE'] ?? '')));
+        if ($site === 'same-origin' || $site === 'none') {
+            return true;
+        }
+        if ($site !== '') {
+            return false;
+        }
+
+        $host = strtolower((string) ($_SERVER['HTTP_HOST'] ?? ''));
+        $requestHost = (string) parse_url('http://' . $host, PHP_URL_HOST);
+        if ($requestHost === '') {
+            return false;
+        }
+
+        $source = (string) ($_SERVER['HTTP_ORIGIN'] ?? '');
+        if ($source === '') {
+            $source = (string) ($_SERVER['HTTP_REFERER'] ?? '');
+        }
+        if ($source === '') {
+            return false;
+        }
+
+        $sourceHost = strtolower((string) parse_url($source, PHP_URL_HOST));
+        return $sourceHost !== '' && $sourceHost === $requestHost;
+    }
+
+    /**
      * 刷新 token（生成新 token，旧 token 进入宽限期）。
      *
      * @param int $graceSeconds 宽限期秒数，默认 1800 秒（30 分钟）

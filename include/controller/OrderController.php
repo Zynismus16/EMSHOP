@@ -43,6 +43,11 @@ class OrderController extends BaseController
             Response::error('无效请求');
         }
 
+        // 跨站/跨子域提交必须带 token；旧主题没有 token 时仅允许同源请求。
+        if (!Csrf::validateOrSameOrigin((string) Input::post('csrf_token', ''))) {
+            Response::error('请求已失效，请刷新页面后重试');
+        }
+
         $goodsId     = (int) Input::post('goods_id', 0);
         $specId      = (int) Input::post('spec_id', 0);
         $quantity    = (int) Input::post('quantity', 1);
