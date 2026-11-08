@@ -82,8 +82,9 @@ if (Request::isPost()) {
                 }
 
                 $nickname = trim((string) Input::post('nickname', ''));
-                if (mb_strlen($nickname) > 100) {
-                    Response::error('昵称最多100个字符');
+                $nicknameErr = DisplayName::validate($nickname, '昵称');
+                if ($nicknameErr !== null) {
+                    Response::error($nicknameErr);
                 }
 
                 $avatar = trim((string) Input::post('avatar', ''));
@@ -147,8 +148,9 @@ if (Request::isPost()) {
                 }
 
                 $nickname = trim((string) Input::post('nickname', ''));
-                if (mb_strlen($nickname) > 100) {
-                    Response::error('昵称最多100个字符');
+                $nicknameErr = DisplayName::validate($nickname, '昵称');
+                if ($nicknameErr !== null) {
+                    Response::error($nicknameErr);
                 }
 
                 $avatar = trim((string) Input::post('avatar', ''));
@@ -316,8 +318,9 @@ if (Request::isPost()) {
                 }
 
                 $name = trim((string) Input::post('name', ''));
-                if ($name === '' || mb_strlen($name) > 100) {
-                    Response::error('店铺名长度需在 1~100 字符');
+                $nameErr = DisplayName::validate($name, '店铺名');
+                if ($nameErr !== null) {
+                    Response::error($nameErr);
                 }
 
                 $subdomain = strtolower(trim((string) Input::post('subdomain', '')));

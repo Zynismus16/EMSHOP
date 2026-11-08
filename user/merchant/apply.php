@@ -75,8 +75,9 @@ if (Request::isPost()) {
         }
 
         $name = trim((string) Input::post('name', ''));
-        if ($name === '' || mb_strlen($name) > 100) {
-            Response::error('分站名称长度需在 1~100 字符');
+        $nameErr = DisplayName::validate($name, '分站名称');
+        if ($nameErr !== null) {
+            Response::error($nameErr);
         }
         $userId = (int) $frontUser['id'];
 

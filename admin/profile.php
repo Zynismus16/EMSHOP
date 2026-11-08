@@ -44,8 +44,9 @@ if (Request::isPost()) {
                     Response::error('该账号已被其他用户使用');
                 }
 
-                if ($nickname === '') {
-                    Response::error('昵称不能为空');
+                $nicknameErr = DisplayName::validate($nickname, '昵称');
+                if ($nicknameErr !== null) {
+                    Response::error($nicknameErr);
                 }
 
                 if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {

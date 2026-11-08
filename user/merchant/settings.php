@@ -29,8 +29,9 @@ if (Request::isPost()) {
         switch ($action) {
             case 'save_profile': {
                 $name = trim((string) Input::post('name', ''));
-                if ($name === '' || mb_strlen($name) > 100) {
-                    Response::error('店铺名需在 1~100 字符');
+                $nameErr = DisplayName::validate($name, '店铺名');
+                if ($nameErr !== null) {
+                    Response::error($nameErr);
                 }
 
                 // 默认加价率：表单按百分比录入（10 = 10%），落库万分位（1000）

@@ -98,8 +98,9 @@ if (Request::isPost()) {
                 }
 
                 $name = trim((string) Input::post('name', ''));
-                if ($name === '' || mb_strlen($name) > 100) {
-                    Response::error('店铺名长度需在 1~100 字符');
+                $nameErr = DisplayName::validate($name, '店铺名');
+                if ($nameErr !== null) {
+                    Response::error($nameErr);
                 }
 
                 $parentId = (int) Input::post('parent_id', 0);
@@ -140,8 +141,9 @@ if (Request::isPost()) {
                     'custom_domain' => strtolower(trim((string) Input::post('custom_domain', ''))) ?: null,
                 ];
 
-                if ($data['name'] === '' || mb_strlen($data['name']) > 100) {
-                    Response::error('店铺名长度需在 1~100 字符');
+                $nameErr = DisplayName::validate($data['name'], '店铺名');
+                if ($nameErr !== null) {
+                    Response::error($nameErr);
                 }
                 $merchantLevelRow = $data['level_id'] > 0 ? $levelModel->findById($data['level_id']) : null;
                 if ($merchantLevelRow === null) {

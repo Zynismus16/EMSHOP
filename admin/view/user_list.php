@@ -429,7 +429,7 @@ $(function(){
                     // iframe 查看商户详情（控制器 _popup=merchant 分支渲染）
                     layer.open({
                         type: 2,
-                        title: '商户详情 - ' + (data.merchant_name || data.merchant_level_name || ''),
+                        title: '商户详情 - ' + emEsc(data.merchant_name || data.merchant_level_name || ''),
                         skin: 'admin-modal',
                         maxmin: true,
                         area: [window.innerWidth >= 800 ? '640px' : '95%', window.innerHeight >= 800 ? '700px' : '90%'],
@@ -533,7 +533,7 @@ $(function(){
             }
             layer.open({
                 type: 2,
-                title: '开通商户分站 - ' + (data.nickname || data.username),
+                title: '开通商户分站 - ' + emEsc(data.nickname || data.username),
                 skin: 'admin-modal',
                 maxmin: true,
                 area: [window.innerWidth >= 800 ? '560px' : '95%', window.innerHeight >= 800 ? '580px' : '90%'],
@@ -552,7 +552,7 @@ $(function(){
         function openUserLevelPopup(data) {
             layer.open({
                 type: 2,
-                title: '修改用户等级 - ' + (data.nickname || data.username),
+                title: '修改用户等级 - ' + emEsc(data.nickname || data.username),
                 skin: 'admin-modal',
                 area: [window.innerWidth >= 800 ? '480px' : '95%', window.innerHeight >= 800 ? '380px' : '70%'],
                 shadeClose: true,

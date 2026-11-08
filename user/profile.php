@@ -31,6 +31,10 @@ if (Request::isPost()) {
         switch ($action) {
             case 'profile':
                 $nickname = trim(Input::post('nickname', ''));
+                $nicknameErr = DisplayName::validate($nickname, '昵称');
+                if ($nicknameErr !== null) {
+                    Response::error($nicknameErr);
+                }
                 $email    = trim(Input::post('email', ''));
                 $mobile   = trim(Input::post('mobile', ''));
 
