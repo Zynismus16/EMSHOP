@@ -572,6 +572,7 @@ class GoodsModel
      */
     public static function update($id, $data)
     {
+        $id = (int) $id;
         $data['updated_at'] = date('Y-m-d H:i:s');
 
         $old = self::getById($id);
@@ -590,6 +591,7 @@ class GoodsModel
      */
     public static function delete($id)
     {
+        $id = (int) $id;
         $result = Database::update('goods', [
             'status' => 0,
             'deleted_at' => date('Y-m-d H:i:s'),
@@ -605,6 +607,7 @@ class GoodsModel
      */
     public static function forceDelete($id)
     {
+        $id = (int) $id;
         $prefix = Database::prefix();
 
         // 先通知插件清理各自的关联数据（如卡密库存、物流信息等），
@@ -633,6 +636,7 @@ class GoodsModel
      */
     public static function setTopCategory($id, $value)
     {
+        $id = (int) $id;
         return (bool)Database::update('goods', ['is_top_category' => $value ? 1 : 0], $id);
     }
 
@@ -641,6 +645,7 @@ class GoodsModel
      */
     public static function setRecommended($id, $value)
     {
+        $id = (int) $id;
         return (bool)Database::update('goods', ['is_recommended' => $value ? 1 : 0], $id);
     }
 

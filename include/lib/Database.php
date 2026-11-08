@@ -595,7 +595,17 @@ final class Database
             $whereCond = '`id` = ?';
             $params[] = (int) $where;
         } elseif (is_string($where) && $where !== '') {
-            // 字符串条件，如 "id = ? AND status = ?"
+            // 字符串条件只允许「代码编写、带 ? 占位符」的写法。
+            // 调用方如果把未过滤的输入拼进 WHERE（如 $id = "0 OR 1=1"），
+            // 这里直接拒绝，避免静默更新全表。
+            if (strpos($where, '?') === false
+                || preg_match('/[;\'"#\x00]/', $where)
+                || strpos($where, '--') !== false
+                || strpos($where, '/*') !== false
+                || strpos($where, '*/') !== false
+            ) {
+                throw new InvalidArgumentException('update() 的字符串 $where 必须使用 ? 占位符，且不能包含引号、注释或分号');
+            }
             $whereCond = $where;
             foreach ($whereParams as $wp) {
                 $params[] = $wp;

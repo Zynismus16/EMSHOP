@@ -147,12 +147,15 @@ if ($action === 'batch') {
         if (is_array($_POST['ids'])) {
             $ids = array_map('intval', $_POST['ids']);
         } else {
-            $ids = json_decode($_POST['ids'], true) ?: [];
+            $decoded = json_decode((string) $_POST['ids'], true);
+            $ids = is_array($decoded) ? array_map('intval', $decoded) : [];
         }
     } else {
         $ids = [];
     }
-    if (empty($ids) || !is_array($ids)) {
+    // JSON 解出来的值也可能是字符串：统一转正整数，杜绝把整段字符串当 WHERE
+    $ids = array_values(array_filter(array_map('intval', (array) $ids), static fn($v) => $v > 0));
+    if (empty($ids)) {
         Response::error('请选择商品');
     }
     // Database::update 返回 affected_rows，值未变化时为 0 但并非失败，
