@@ -80,6 +80,44 @@ final class MerchantLedgerService
     }
 
     /**
+     * 计算商户实得（×1000000）。
+     *
+     * 正常订单 = Σ(每行 price × qty − cost − fee)，优惠券（discount_amount）由主站承担
+     * —— 主站做营销活动是它自己的策略，不把代价摊给商户。
+     *
+     * 例外：买家就是商户主本人（用自己账号购买自己店铺的商品）时，主站再按原价分账
+     * 等于把优惠金额补贴给商户（用券自购 → 套现）。这类订单按优惠后的商品金额结算。
+     *
+     * @param array<string, mixed> $order
+     * @param array<int, array<string, mixed>> $items
+     */
+    public static function computeIncome(array $order, array $items, int $ownerUserId): int
+    {
+        $totalLine = 0;
+        $totalCost = 0;
+        $totalFee  = 0;
+
+        foreach ($items as $it) {
+            $totalLine += ((int) ($it['price'] ?? 0)) * ((int) ($it['quantity'] ?? 0));
+            $totalCost += (int) ($it['cost_amount'] ?? 0);
+            $totalFee  += (int) ($it['fee_amount'] ?? 0);
+        }
+
+        $buyerUserId = (int) ($order['user_id'] ?? 0);
+        if ($buyerUserId > 0 && $buyerUserId === $ownerUserId) {
+            $goodsRevenue = (int) ($order['goods_amount'] ?? 0) - (int) ($order['discount_amount'] ?? 0);
+            if ($goodsRevenue < 0) {
+                $goodsRevenue = 0;
+            }
+            $income = $goodsRevenue - $totalCost - $totalFee;
+        } else {
+            $income = $totalLine - $totalCost - $totalFee;
+        }
+
+        return $income > 0 ? $income : 0;
+    }
+
+    /**
      * 订单完成时结算：把商户实得入账到 em_user.shop_balance。
      *
      * 幂等：若该订单已有 increase 记录，直接跳过（防重入）。
@@ -110,20 +148,7 @@ final class MerchantLedgerService
             [$orderId]
         );
 
-        $totalLine = 0;    // Σ(price × qty)
-        $totalCost = 0;
-        $totalFee = 0;
-        foreach ($items as $it) {
-            $totalLine += ((int) $it['price']) * ((int) $it['quantity']);
-            $totalCost += (int) ($it['cost_amount'] ?? 0);
-            $totalFee  += (int) ($it['fee_amount'] ?? 0);
-        }
-
-        // 商户实得 = Σ(每行 price × qty − cost − fee)，跟 pay_amount 解耦。
-        // 优惠券（discount_amount）由主站承担 —— 主站做营销活动是它自己的策略，
-        // 不把代价摊给商户。否则会出现"主站发券、商户卖货倒亏"的反直觉情况。
-        $income = $totalLine - $totalCost - $totalFee;
-        if ($income < 0) $income = 0; // 边界保护；正常不会负
+        $income = self::computeIncome($order, $items, $ownerUserId);
 
         $orderTable = Database::prefix() . 'order';
 
