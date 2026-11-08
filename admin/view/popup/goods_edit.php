@@ -1239,7 +1239,7 @@ $(function() {
             });
             $('#specLevelPriceModal').show(); // .spec-modal 类默认 display:none，layer 不会帮忙去掉
             layer.open({
-                type: 1, title: '用户等级专属价 — ' + specName,
+                type: 1, title: '用户等级专属价 — ' + emEsc(specName),
                 skin: 'admin-modal',
                 area: specModalArea(520, 500),
                 content: $('#specLevelPriceModal'),
@@ -1287,7 +1287,7 @@ $(function() {
 
             $('#specUserPriceModal').show();
             layer.open({
-                type: 1, title: '用户专属价 — ' + specName,
+                type: 1, title: '用户专属价 — ' + emEsc(specName),
                 skin: 'admin-modal',
                 area: specModalArea(560, 540),
                 content: $('#specUserPriceModal'),
@@ -1410,7 +1410,7 @@ $(function() {
             $('#specImagesUrl').val('');
             $('#specImagesModal').show();
             layer.open({
-                type: 1, title: '规格专属图片 — ' + specName,
+                type: 1, title: '规格专属图片 — ' + emEsc(specName),
                 skin: 'admin-modal',
                 area: specModalArea(600, 520),
                 content: $('#specImagesModal'),

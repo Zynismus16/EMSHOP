@@ -209,7 +209,7 @@ $(function(){
                     openPopup('编辑货币', data.id);
                     break;
                 case 'del':
-                    layer.confirm('确定要删除货币「' + data.code + '」吗？此操作不可恢复。', function (idx) {
+                    layer.confirm('确定要删除货币「' + emEsc(data.code) + '」吗？此操作不可恢复。', function (idx) {
                         $.ajax({
                             url: '/admin/currency.php',
                             type: 'POST',

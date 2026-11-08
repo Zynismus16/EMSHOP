@@ -191,7 +191,7 @@ $(function(){
                     openPopup('编辑友链', data.id);
                     break;
                 case 'del':
-                    layer.confirm('确定要删除友链「' + data.name + '」吗？此操作不可恢复。', function (idx) {
+                    layer.confirm('确定要删除友链「' + emEsc(data.name) + '」吗？此操作不可恢复。', function (idx) {
                         $.ajax({
                             url: '/admin/friend_link.php',
                             type: 'POST',
@@ -269,7 +269,7 @@ $(function(){
             var names = data.map(function(item) { return item.name; }).join('、');
             if (names.length > 100) names = names.substring(0, 100) + '...';
 
-            layer.confirm('确定要删除以下 ' + data.length + ' 条友链吗？<br><span style="color:#9ca3af;font-size:12px;">' + names + '</span>', function (idx) {
+            layer.confirm('确定要删除以下 ' + data.length + ' 条友链吗？<br><span style="color:#9ca3af;font-size:12px;">' + emEsc(names) + '</span>', function (idx) {
                 var loadIndex = layer.load(1);
                 $.ajax({
                     url: '/admin/friend_link.php',

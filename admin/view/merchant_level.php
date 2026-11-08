@@ -168,7 +168,7 @@ $(function(){
                     openPopup('编辑商户等级', data.id);
                     break;
                 case 'del':
-                    layer.confirm('确定要删除等级「' + data.name + '」吗？此操作不可恢复。', function (idx) {
+                    layer.confirm('确定要删除等级「' + emEsc(data.name) + '」吗？此操作不可恢复。', function (idx) {
                         $.ajax({
                             url: '/admin/merchant_level.php',
                             type: 'POST',

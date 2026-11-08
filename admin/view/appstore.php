@@ -1124,7 +1124,7 @@ $(function () {
                 }).done(function (res) {
                     if (res && res.code === 200) {
                         if (res.data && res.data.csrf_token) window.adminCsrfToken = res.data.csrf_token;
-                        layer.msg('激活成功：' + ((res.data && res.data.level_label) || ''));
+                        layer.msg('激活成功：' + emEsc((res.data && res.data.level_label) || ''));
                         setTimeout(function () { location.reload(); }, 900);
                         return;
                     }

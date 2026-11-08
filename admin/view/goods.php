@@ -414,10 +414,10 @@ $(function(){
                     click: function(obj) {
                         if (obj.id === 'copyId') {
                             copyToClipboard(String(goodsId));
-                            layer.msg('已复制商品ID：' + goodsId);
+                            layer.msg('已复制商品ID：' + emEsc(goodsId));
                         } else if (obj.id === 'copyCode') {
                             copyToClipboard(goodsCode);
-                            layer.msg('已复制商品编码：' + goodsCode);
+                            layer.msg('已复制商品编码：' + emEsc(goodsCode));
                         } else if (obj.id === 'clone') {
                             cloneGoods(goodsId);
                         } else if (obj.id === 'delete') {

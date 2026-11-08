@@ -412,7 +412,7 @@ $(function () {
                 showOrderDetail(obj.data);
             } else if (obj.event === 'delete') {
                 var data = obj.data;
-                layer.confirm('确定要删除订单「' + data.order_no + '」吗？将同时清理关联的发货队列和订单商品，此操作不可恢复。', function (idx) {
+                layer.confirm('确定要删除订单「' + emEsc(data.order_no) + '」吗？将同时清理关联的发货队列和订单商品，此操作不可恢复。', function (idx) {
                     $.ajax({
                         url: '/admin/order.php',
                         type: 'POST',
@@ -438,7 +438,7 @@ $(function () {
         function showOrderDetail(data) {
             layer.open({
                 type: 2,
-                title: '订单详情 - ' + data.order_no,
+                title: '订单详情 - ' + emEsc(data.order_no),
                 skin: 'admin-modal',
                 maxmin: true,
                 shadeClose: true,

@@ -812,7 +812,7 @@ $(function(){
             $btn.prop('disabled', true).html('<i class="fa fa-refresh fa-spin"></i> 激活中');
             post({_action: 'activate', license_code: code}).done(function (res) {
                 if (res.code === 200) {
-                    layer.msg('激活成功：' + (res.data.level_label || ''), {time: 900});
+                    layer.msg('激活成功：' + emEsc(res.data.level_label || ''), {time: 900});
                     setTimeout(function () { location.reload(); }, 900);
                 } else {
                     layer.msg(res.msg || '激活失败');

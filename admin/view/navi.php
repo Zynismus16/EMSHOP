@@ -170,7 +170,7 @@ $(function(){
             if (obj.event === 'edit') {
                 openPopup('编辑导航', data.id);
             } else if (obj.event === 'del') {
-                layer.confirm('确定要删除导航「' + data.name + '」吗？', function (idx) {
+                layer.confirm('确定要删除导航「' + emEsc(data.name) + '」吗？', function (idx) {
                     $.post('/admin/navi.php', {
                         _action: 'delete', csrf_token: csrfToken, id: data.id
                     }, function (res) {

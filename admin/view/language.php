@@ -145,7 +145,7 @@ $(function(){
                     openPopup('编辑语言', data.id);
                     break;
                 case 'del':
-                    layer.confirm('确定要删除语言「' + data.name + '」吗？该操作将同时删除所有相关翻译词条，不可恢复。', function (idx) {
+                    layer.confirm('确定要删除语言「' + emEsc(data.name) + '」吗？该操作将同时删除所有相关翻译词条，不可恢复。', function (idx) {
                         $.ajax({
                             url: '/admin/language.php',
                             type: 'POST',

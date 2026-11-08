@@ -202,7 +202,7 @@ $csrfToken = Csrf::token();
                         openPopup('编辑分类', null, data.id);
                         break;
                     case 'del':
-                        layer.confirm('确定要删除分类「' + data.name + '」吗？此操作不可恢复。', function (idx) {
+                        layer.confirm('确定要删除分类「' + emEsc(data.name) + '」吗？此操作不可恢复。', function (idx) {
                             $.ajax({
                                 url: '/admin/category.php?type=' + currentType,
                                 type: 'POST',

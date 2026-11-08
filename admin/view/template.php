@@ -402,7 +402,7 @@ function doUpdateTemplate(name, filePath, version) {
                 if (res.data && res.data.csrf_token) {
                     csrfToken = res.data.csrf_token;
                 }
-                layui.layer.msg('模板已更新至 v' + version);
+                layui.layer.msg('模板已更新至 v' + emEsc(version));
                 loadTemplates();
             } else {
                 layui.layer.msg((res && res.msg) || '更新失败');

@@ -525,7 +525,7 @@ $(function () {
         var iframeWin = null;
         rootLayer.open({
             type: 2,
-            title: '发货 #' + <?= json_encode($order['order_no']) ?>,
+            title: '发货 #' + emEsc(<?= json_encode($order['order_no']) ?>),
             skin: 'admin-modal',
             shadeClose: false,
             area: [window.parent.innerWidth >= 720 ? '680px' : '95%', window.parent.innerHeight >= 600 ? '560px' : '90%'],

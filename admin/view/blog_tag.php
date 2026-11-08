@@ -243,7 +243,7 @@ $(function(){
             if (obj.event === 'edit') {
                 openEditForm(obj.data);
             } else if (obj.event === 'delete') {
-                layer.confirm('确定要删除标签"' + obj.data.name + '"吗？删除后将解除所有文章关联。', function (idx) {
+                layer.confirm('确定要删除标签"' + emEsc(obj.data.name) + '"吗？删除后将解除所有文章关联。', function (idx) {
                     $.ajax({
                         url: '/admin/blog_tag.php?_action=delete',
                         type: 'POST',

@@ -1,6 +1,17 @@
 (function ($) {
     'use strict';
 
+    /**
+     * 全局 HTML 转义。
+     * layer 的 title / msg / confirm / open 内容按 HTML 渲染，任何拼进去的
+     * 数据库字段都必须先过这里，避免后台存储型 XSS。
+     */
+    window.emEsc = function (v) {
+        return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    };
+
     /** 
      * 高亮当前菜单项
      * 根据 URL 匹配侧栏菜单，设置 is-active 状态并展开对应父级

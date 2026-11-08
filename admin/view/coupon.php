@@ -288,7 +288,7 @@ $(function(){
             if (obj.event === 'edit') {
                 openPopup('编辑优惠券', data.id);
             } else if (obj.event === 'del') {
-                layer.confirm('确定删除优惠券「' + data.name + '」吗？此操作不可恢复', function (idx) {
+                layer.confirm('确定删除优惠券「' + emEsc(data.name) + '」吗？此操作不可恢复', function (idx) {
                     $.ajax({
                         url: '/admin/coupon.php', type: 'POST', dataType: 'json',
                         data: { csrf_token: csrfToken, _action: 'delete', id: data.id },

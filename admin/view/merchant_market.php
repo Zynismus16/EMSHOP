@@ -301,12 +301,12 @@ layui.use(['table', 'layer', 'form'], function () {
             var logs = (res.data && res.data.list) || [];
             var rows = logs.map(function (l) {
                 return '<tr>' +
-                    '<td>' + (l.purchased_at || '') + '</td>' +
-                    '<td>' + (l.remark || '-') + '</td>' +
+                    '<td>' + emEsc(l.purchased_at || '') + '</td>' +
+                    '<td>' + emEsc(l.remark || '-') + '</td>' +
                     '<td style="text-align:right;">' + (l.purchase_qty || 0) + '</td>' +
                     '<td style="text-align:right;">¥' + ((l.cost_per_unit || 0) / 1000000).toFixed(2) + '</td>' +
                     '<td style="text-align:right;">¥' + ((l.total_cost || 0) / 1000000).toFixed(2) + '</td>' +
-                    '<td>' + (l.remote_order_no || '-') + '</td>' +
+                    '<td>' + emEsc(l.remote_order_no || '-') + '</td>' +
                     '</tr>';
             }).join('');
             if (!rows) rows = '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:30px;">暂无采购流水</td></tr>';
@@ -321,7 +321,7 @@ layui.use(['table', 'layer', 'form'], function () {
                 '</table>' +
                 '</div>';
             layer.open({
-                type: 1, title: '采购流水 · ' + (d.title || d.app_code),
+                type: 1, title: '采购流水 · ' + emEsc(d.title || d.app_code),
                 area: ['760px', '440px'], shadeClose: true,
                 content: html, btn: false
             });

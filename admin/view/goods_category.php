@@ -154,7 +154,7 @@ $(function(){
             var ids = rows.map(function (r) { return r.id; });
             var names = rows.map(function (r) { return r.name; }).slice(0, 3).join('、') + (rows.length > 3 ? '…' : '');
 
-            layer.confirm('确认删除 ' + rows.length + ' 个分类？<br><span style="color:#9ca3af;font-size:12px;">' + names + '</span>', function (idx) {
+            layer.confirm('确认删除 ' + rows.length + ' 个分类？<br><span style="color:#9ca3af;font-size:12px;">' + emEsc(names) + '</span>', function (idx) {
                 $.ajax({
                     url: '/admin/goods_category.php?action=batch_delete',
                     type: 'POST',
@@ -195,7 +195,7 @@ $(function(){
                     openPopup('编辑分类', data.id);
                     break;
                 case 'del':
-                    layer.confirm('确定要删除分类「' + data.name + '」吗？此操作不可恢复。', function (idx) {
+                    layer.confirm('确定要删除分类「' + emEsc(data.name) + '」吗？此操作不可恢复。', function (idx) {
                         $.ajax({
                             url: '/admin/goods_category.php?action=delete',
                             type: 'POST',

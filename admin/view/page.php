@@ -236,7 +236,7 @@ $(function(){
                 // 前台预览新开页签
                 window.open('/p/' + encodeURIComponent(d.slug), '_blank');
             } else if (obj.event === 'delete') {
-                layer.confirm('确定要删除页面「' + d.title + '」吗？', function (idx) {
+                layer.confirm('确定要删除页面「' + emEsc(d.title) + '」吗？', function (idx) {
                     $.ajax({
                         url: '/admin/page.php?_action=delete',
                         type: 'POST',
@@ -258,7 +258,7 @@ $(function(){
             } else if (obj.event === 'toggleStatus') {
                 toggleTag($(this), d.id);
             } else if (obj.event === 'setHomepage') {
-                layer.confirm('把「' + d.title + '」设为主站首页？同时会替换当前已设的页面首页。', function (idx) {
+                layer.confirm('把「' + emEsc(d.title) + '」设为主站首页？同时会替换当前已设的页面首页。', function (idx) {
                     $.ajax({
                         url: '/admin/page.php?_action=set_homepage',
                         type: 'POST', dataType: 'json',

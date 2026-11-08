@@ -673,7 +673,7 @@ layui.use(function(){
                 layui.layer.close(loadingIdx);
                 if (res && (res.code === 0 || res.code === 200)) {
                     csrfToken = (res.data && res.data.csrf_token) ? res.data.csrf_token : csrfToken;
-                    layer.msg('插件已更新至 v' + ver);
+                    layer.msg('插件已更新至 v' + emEsc(ver));
                     loadPlugins();
                 } else {
                     layer.msg((res && res.msg) || '插件更新失败');

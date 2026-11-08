@@ -210,7 +210,7 @@ $(function(){
                     openPopup('编辑翻译', data.id);
                     break;
                 case 'del':
-                    layer.confirm('确定要删除翻译「' + data.translate + '」吗？', function (idx) {
+                    layer.confirm('确定要删除翻译「' + emEsc(data.translate) + '」吗？', function (idx) {
                         $.ajax({
                             url: '/admin/lang.php',
                             type: 'POST',
@@ -307,7 +307,7 @@ $(function(){
             var translates = data.map(function(item) { return item.translate; }).join('、');
             if (translates.length > 100) translates = translates.substring(0, 100) + '...';
 
-            layer.confirm('确定要删除以下 ' + data.length + ' 条翻译吗？<br><span style="color:#9ca3af;font-size:12px;">' + translates + '</span>', function (idx) {
+            layer.confirm('确定要删除以下 ' + data.length + ' 条翻译吗？<br><span style="color:#9ca3af;font-size:12px;">' + emEsc(translates) + '</span>', function (idx) {
                 var loadIndex = layer.load(1);
                 $.ajax({
                     url: '/admin/lang.php',
