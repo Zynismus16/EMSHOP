@@ -157,6 +157,10 @@ final class Csrf
     private static function setCookie(string $token): void
     {
         $secret = self::getCookieSecret();
+        if ($secret === null) {
+            return;
+        }
+
         $hmac = hash_hmac('sha256', $token, $secret);
         $cookieValue = $token . '.' . $hmac;
 
@@ -194,6 +198,10 @@ final class Csrf
 
         // HMAC 签名验证（防止 cookie 被篡改）
         $secret = self::getCookieSecret();
+        if ($secret === null) {
+            return false;
+        }
+
         $expectedHmac = hash_hmac('sha256', $cookieToken, $secret);
         if (!hash_equals($expectedHmac, $providedHmac)) {
             return false;
@@ -205,17 +213,19 @@ final class Csrf
 
     /**
      * 获取 cookie 签名密钥（基于配置派生）。
+     *
+     * 没有密钥时返回 null，调用方据此停用 cookie 兜底；
+     * 老站的密钥由 CsrfSecret 在后台首次访问时写入 config.php。
      */
-    private static function getCookieSecret(): string
+    private static function getCookieSecret(): ?string
     {
+        $secret = CsrfSecret::get();
+        if ($secret === '') {
+            return null;
+        }
+
         // 使用配置的密钥派生，确保 cookie 签名不可伪造
         $base = EM_CONFIG['auth']['csrf_key'] ?? 'default_csrf_key';
-        $secret = EM_CONFIG['auth']['secret'] ?? EM_CONFIG['app']['secret'] ?? '';
-
-        if ($secret === '') {
-            // 降级：使用 base64 编码的 key 作为密钥
-            return base64_encode($base);
-        }
 
         return hash('sha256', $base . $secret, true);
     }

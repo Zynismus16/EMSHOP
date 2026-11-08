@@ -424,6 +424,7 @@ PHP;
             'remember_days_default' => 7,
             'remember_days_checked' => 365,
             'csrf_key' => 'em_admin_csrf',
+            'secret' => bin2hex(random_bytes(32)),
         ],
         'avatar' => '/content/static/img/default-admin-avatar.jpg',
         'placeholder_img' => '/content/static/img/img-1.png',

@@ -32,6 +32,11 @@ function adminRequireLogin(): void
 
     $adminUser = $auth->user();
 
+    // 老站 config.php 里没有安装时生成的 auth.secret：在这里补齐并写回，
+    // 保证后续 CSRF 校验统一走带密钥的 cookie 兜底。必须放在页面自己的
+    // CSRF 校验之前执行，否则第一次请求仍会落到旧的无密钥路径。
+    CsrfSecret::ensure();
+
     // 当前请求作用域：主站后台固定 'main'
     // TemplateStorage / Storage / PluginModel 等"按 scope 存取"的组件会读这个全局
     $GLOBALS['__em_current_scope'] = 'main';
