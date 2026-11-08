@@ -62,6 +62,27 @@ final class UserModel
     }
 
     /**
+     * 按 ID 查找仍然有效的管理员（用于会话实时校验）。
+     *
+     * 账号被禁用、删除或降权后返回 null，调用方据此让旧会话立即失效。
+     *
+     * @return array<string, mixed>|null
+     */
+    public function findAdminById(int $userId): ?array
+    {
+        $sql = sprintf(
+            'SELECT * FROM `%s` WHERE `id` = :id AND `status` = :status AND `role` = :role LIMIT 1',
+            $this->table
+        );
+
+        return Database::fetchOne($sql, [
+            'id' => $userId,
+            'status' => 1,
+            'role' => 'admin',
+        ]);
+    }
+
+    /**
      * 更新管理员最近登录信息。
      */
     public function updateLoginMeta(int $userId, string $ip, ?string $rememberToken): void

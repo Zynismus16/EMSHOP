@@ -50,7 +50,7 @@ final class AuthService
         $this->startSession();
 
         if (!empty($_SESSION[$this->config['session_key']])) {
-            return true;
+            return $this->validateSession();
         }
 
         $token = isset($_COOKIE[$this->config['remember_cookie']]) ? (string) $_COOKIE[$this->config['remember_cookie']] : '';
@@ -67,6 +67,46 @@ final class AuthService
         $_SESSION[$this->config['session_key']] = $this->sessionPayload($user);
         session_regenerate_id(true);
         return true;
+    }
+
+    /**
+     * 校验 session 中的管理员是否仍然有效。
+     *
+     * 每次后台请求回查一次数据库：账号被禁用、删除、降权，或密码被修改后，
+     * 旧 session 立即失效，不再等到 session 自然过期。
+     */
+    private function validateSession(): bool
+    {
+        $payload = $_SESSION[$this->config['session_key']] ?? null;
+        $userId = is_array($payload) ? (int) ($payload['id'] ?? 0) : 0;
+
+        if ($userId > 0) {
+            $user = $this->users->findAdminById($userId);
+            if ($user !== null && hash_equals(
+                (string) ($payload['pwd'] ?? ''),
+                $this->passwordFingerprint((string) ($user['password'] ?? ''))
+            )) {
+                return true;
+            }
+        }
+
+        // 账号失效或密码已改：清掉登录态，并作废记住我 cookie
+        unset($_SESSION[$this->config['session_key']]);
+        $this->forgetRememberCookie();
+
+        if (session_id() !== '') {
+            session_regenerate_id(true);
+        }
+
+        return false;
+    }
+
+    /**
+     * 密码指纹：存进 session，用于判断密码是否已被修改。
+     */
+    private function passwordFingerprint(string $hash): string
+    {
+        return hash('sha256', $hash);
     }
 
     /**
@@ -178,6 +218,8 @@ final class AuthService
             'mobile' => (string) ($user['mobile'] ?? ''),
             'avatar' => (string) $user['avatar'],
             'role' => (string) $user['role'],
+            // 密码指纹：密码变了，其它终端上的旧会话会在下次请求时失效
+            'pwd' => $this->passwordFingerprint((string) ($user['password'] ?? '')),
         ];
     }
 

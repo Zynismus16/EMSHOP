@@ -194,6 +194,14 @@ if (Request::isPost()) {
 
                 $model->update($id, $updateData);
 
+                // 改的是自己：同步刷新当前会话（含密码指纹），避免下一次请求被踢下线
+                if ($id === $currentAdminId) {
+                    $freshUser = (new UserModel())->findById($id);
+                    if ($freshUser !== null) {
+                        $auth->refreshSession($freshUser);
+                    }
+                }
+
                 $csrfToken = Csrf::refresh();
                 Response::success('操作成功', ['csrf_token' => $csrfToken]);
                 break;
