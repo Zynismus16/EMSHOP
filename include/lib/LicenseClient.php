@@ -869,8 +869,10 @@ final class LicenseClient
      *
      * @return array<int, mixed>
      */
-    private static function tlsOptions(): array
+    public static function tlsOptions(): array
     {
+        // 默认开启证书与主机名校验。授权线路如果是自签证书 / 证书链不全，
+        // 必须由站长显式设置 config 的 license_insecure_tls=1 才降级。
         if ((string) Config::get('license_insecure_tls', '0') === '1') {
             return [
                 CURLOPT_SSL_VERIFYPEER => false,
@@ -879,8 +881,8 @@ final class LicenseClient
         }
 
         return [
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => 0,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
         ];
     }
 

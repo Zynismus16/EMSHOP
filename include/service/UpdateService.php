@@ -168,6 +168,15 @@ final class UpdateService
         // 不加这一层 cURL 对相对路径会直接 HTTP 0 失败
         $packageUrl = self::resolvePackageUrl($packageUrl);
 
+        // package_url 来自客户端：只允许授权线路的主机，否则等于允许把任意 zip
+        // 覆盖到站点根（RCE），以及用 http://127.0.0.1 之类地址探测内网（SSRF）。
+        if (!self::isTrustedPackageUrl($packageUrl)) {
+            return [
+                'ok' => false, 'path' => '', 'size' => 0, 'sha256' => '',
+                'error' => '升级包地址非法（必须与授权服务器同一域名）',
+            ];
+        }
+
         // 有校验值才比对；空值 / 格式不合法一律按「没给」处理
         $expectedSha256 = strtolower(trim($expectedSha256));
         $hasSha256 = preg_match('/^[a-f0-9]{64}$/', $expectedSha256) === 1;
@@ -194,11 +203,11 @@ final class UpdateService
             CURLOPT_TIMEOUT        => 120,  // 120秒下载不下来就退出，正常网络足够了
             CURLOPT_CONNECTTIMEOUT => 10,  // 10秒建立连接时间
             CURLOPT_USERAGENT      => 'emshop-update/' . (defined('EM_VERSION') ? EM_VERSION : 'dev'),
-            // 恢复证书与主机名校验。升级包会被覆盖到整站代码，链路上被替换等于站点沦陷。
-            // 若线路确实是自签证书，可把配置项 license_insecure_tls 置 '1'（与授权通道共用）。
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => 0,
-        ]);
+            // 证书与主机名校验默认开启；自签线路由 config 的 license_insecure_tls=1 显式降级
+        ] + (class_exists('LicenseClient') ? LicenseClient::tlsOptions() : [
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+        ]));
         $ok = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlErr = curl_error($ch);
@@ -225,6 +234,12 @@ final class UpdateService
             ];
         }
 
+        self::audit('update_download', [
+            'host'   => (string) parse_url($packageUrl, PHP_URL_HOST),
+            'size'   => (int) $size,
+            'sha256' => $sha256,
+        ]);
+
         return ['ok' => true, 'path' => $localPath, 'size' => (int) $size, 'sha256' => $sha256];
     }
 
@@ -241,6 +256,16 @@ final class UpdateService
      */
     public static function extract(string $zipPath): array
     {
+        // zip_path 来自客户端：只允许临时下载目录里的 .zip，防止拿服务器上的任意文件来解压
+        $realZip = str_replace('\\', '/', (string) realpath($zipPath));
+        $cacheRoot = str_replace('\\', '/', (string) realpath(EM_ROOT . self::CACHE_DIR));
+        $cachePrefix = rtrim($cacheRoot, '/') . '/';
+        if ($realZip === '' || $cacheRoot === ''
+            || ($realZip !== $cacheRoot && strpos($realZip, $cachePrefix) !== 0)
+            || strtolower(pathinfo($realZip, PATHINFO_EXTENSION)) !== 'zip'
+        ) {
+            return ['ok' => false, 'extract_path' => '', 'files' => 0, 'error' => '升级包路径非法'];
+        }
         if (!is_file($zipPath)) {
             return ['ok' => false, 'extract_path' => '', 'files' => 0, 'error' => '升级包文件不存在'];
         }
@@ -268,6 +293,8 @@ final class UpdateService
         // 解压完成后删除 zip，不在服务器保留升级包
         @unlink($zipPath);
 
+        self::audit('update_extract', ['files' => $count]);
+
         return ['ok' => true, 'extract_path' => EM_ROOT . self::EXTRACT_DIR, 'files' => $count];
     }
 
@@ -283,6 +310,16 @@ final class UpdateService
      */
     public static function apply(string $extractPath): array
     {
+        // extract_path 来自客户端：只允许固定的解压目录，否则等于允许把服务器上
+        // 任意目录（/etc、其它站点、备份目录）复制到网站根目录。
+        $realExtract = str_replace('\\', '/', (string) realpath($extractPath));
+        $extractRoot = str_replace('\\', '/', (string) realpath(EM_ROOT . self::EXTRACT_DIR));
+        $extractPrefix = rtrim($extractRoot, '/') . '/';
+        if ($realExtract === '' || $extractRoot === ''
+            || ($realExtract !== $extractRoot && strpos($realExtract, $extractPrefix) !== 0)
+        ) {
+            return ['ok' => false, 'replaced' => 0, 'added' => 0, 'skipped' => 0, 'manifest_file' => '', 'error' => '解压目录非法'];
+        }
         if (!is_dir($extractPath)) {
             return ['ok' => false, 'replaced' => 0, 'added' => 0, 'skipped' => 0, 'manifest_file' => '', 'error' => '解压目录不存在'];
         }
@@ -299,6 +336,7 @@ final class UpdateService
         try {
             foreach ($iter as $fileInfo) {
                 if ($fileInfo->isDir()) continue;
+                if ($fileInfo->isLink()) { $skipped++; continue; }
                 $rel = ltrim(str_replace('\\', '/', substr($fileInfo->getPathname(), strlen($srcRoot))), '/');
                 if (self::isPreserved($rel)) { $skipped++; continue; }
 
@@ -343,6 +381,12 @@ final class UpdateService
         // 落 manifest 到磁盘，供后续 migrate 失败时回滚用
         $manifestPath = EM_ROOT . self::MANIFEST_FILE;
         @file_put_contents($manifestPath, json_encode($manifest, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+
+        self::audit('update_apply', [
+            'replaced' => $replaced,
+            'added'    => $added,
+            'skipped'  => $skipped,
+        ]);
 
         return [
             'ok' => true, 'replaced' => $replaced, 'added' => $added, 'skipped' => $skipped,
@@ -577,6 +621,23 @@ final class UpdateService
     }
 
     /**
+     * 升级包地址是否属于授权线路主机。
+     */
+    private static function isTrustedPackageUrl(string $url): bool
+    {
+        if (!class_exists('DownloadUrlGuard') || !class_exists('LicenseClient')) {
+            return false;
+        }
+        foreach (LicenseClient::lines() as $line) {
+            $base = rtrim((string) ($line['url'] ?? ''), '/');
+            if ($base !== '' && DownloadUrlGuard::isAllowed($url, $base, true)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * 解压目录可能是 emshop-v1.2.0/ 这样套一层的，也可能是直接铺平的。
      * 看解压根下有没有 init.php 或 admin/ 来判断，找不到就返回原目录。
      */
@@ -707,6 +768,27 @@ final class UpdateService
         foreach (glob($abs . '/*') ?: [] as $f) {
             if (is_dir($f)) self::removeDir($f);
             else @unlink($f);
+        }
+    }
+
+    /**
+     * 升级操作审计：记录操作人、动作与关键参数。写日志失败不阻断升级。
+     */
+    private static function audit(string $action, array $detail): void
+    {
+        try {
+            $admin = $_SESSION['em_admin_auth'] ?? null;
+            $operator = is_array($admin) ? $admin : [];
+            (new SystemLogModel())->info(
+                'admin_operation',
+                $action,
+                '在线升级：' . $action,
+                $detail,
+                (int) ($operator['id'] ?? 0),
+                (string) ($operator['username'] ?? '')
+            );
+        } catch (Throwable $e) {
+            // 审计失败不阻断升级
         }
     }
 

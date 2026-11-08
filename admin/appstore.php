@@ -114,11 +114,8 @@ function appstore_download_package(string $downloadUrl, string $targetFile): arr
         CURLOPT_TIMEOUT         => 120,
         CURLOPT_CONNECTTIMEOUT  => 10,
         CURLOPT_USERAGENT       => 'emshop-' . EM_VERSION,
-        // 证书校验按项目既有口径关闭（线路可能是自签证书）；别把这两行当安全保证，
-        // 真正兜底的是调用前的 host 白名单
-        CURLOPT_SSL_VERIFYPEER => false,
-        CURLOPT_SSL_VERIFYHOST => 0,
-    ]);
+        // 证书校验默认开启；自签线路由 config 的 license_insecure_tls=1 显式降级
+    ] + LicenseClient::tlsOptions());
     $ok = curl_exec($ch);
     $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $curlErr = curl_error($ch);
