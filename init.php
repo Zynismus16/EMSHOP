@@ -34,8 +34,8 @@ if (!defined('EM_ROOT')) {
     define('EM_ROOT', __DIR__);
 }
 define('EM_INITIALIZED', true); 
-define('EM_VERSION', '1.3.28');
-define('EM_VERSION_TIMESTAMP', '1328');
+define('EM_VERSION', '1.3.29');
+define('EM_VERSION_TIMESTAMP', '1329');
 
 // 授权服务器地址定义在 Config::load() 之后（要读「开发模式」开关），见下方。
 
