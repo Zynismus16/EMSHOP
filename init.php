@@ -75,12 +75,17 @@ if (php_sapi_name() !== 'cli' && session_status() === PHP_SESSION_NONE) {
     ini_set('session.use_strict_mode', '1');
     ini_set('session.use_only_cookies', '1');
 
-    $emSessionDir = rtrim(sys_get_temp_dir(), '/\\') . DIRECTORY_SEPARATOR . $emSessionName;
-    if (!is_dir($emSessionDir)) {
-        @mkdir($emSessionDir, 0700, true);
-    }
-    if (is_dir($emSessionDir) && is_writable($emSessionDir)) {
-        session_save_path($emSessionDir);
+    // 只有 PHP 原生文件处理器才把 save_path 当目录用。Redis / Memcached 等处理器
+    // 的 save_path 是服务器连接串（如 tcp://127.0.0.1:6379），覆盖成目录会导致
+    // session_start() 连不上句柄、整个会话失效，所以非 files 处理器不动 save_path。
+    if (session_module_name() === 'files') {
+        $emSessionDir = rtrim(sys_get_temp_dir(), '/\\') . DIRECTORY_SEPARATOR . $emSessionName;
+        if (!is_dir($emSessionDir)) {
+            @mkdir($emSessionDir, 0700, true);
+        }
+        if (is_dir($emSessionDir) && is_writable($emSessionDir)) {
+            session_save_path($emSessionDir);
+        }
     }
 
     // 会话 Cookie 安全属性。此前完全依赖 PHP 默认值：HttpOnly 默认开、SameSite 默认空
