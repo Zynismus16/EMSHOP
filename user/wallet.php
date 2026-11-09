@@ -42,9 +42,9 @@ $paymentMethods = array_values(array_filter(
 
 if (Request::isPjax()) {
     echo '<div id="userContent" class="uc-content">';
-    include __DIR__ . '/view/wallet.php';
+    include userViewFile('wallet');
     echo '</div>';
 } else {
-    $userContentView = __DIR__ . '/view/wallet.php';
+    $userContentView = userViewFile('wallet');
     require __DIR__ . '/index.php';
 }

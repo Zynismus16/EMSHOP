@@ -52,3 +52,65 @@ function userRequireLogin(): void
         $_SESSION['em_front_user'] = $frontUser;
     }
 }
+
+/**
+ * 解析用户中心视图文件路径。
+ *
+ * 用户中心是独立入口（不走控制器），原先直接 include user/view/*.php，
+ * 主题无法定制。这里补一层「主题可选覆盖」，查找顺序与 View::findTemplate 一致：
+ *   1) content/template/{当前主题}/user/{name}.php
+ *   2) content/template/default/user/{name}.php
+ *   3) user/view/{name}.php（核心兜底）
+ *
+ * 主题不提供 user/ 目录时，返回结果与旧版完全相同，老主题零改动。
+ *
+ * @param string $name 视图名（不含 .php），如 index、home、order
+ */
+function userViewFile(string $name): string
+{
+    // 兜底防路径穿越；调用方传的都是固定字面量，这里只是多一层保险
+    if (preg_match('/^[a-z0-9_]+$/i', $name) !== 1) {
+        return EM_ROOT . '/user/view/' . $name . '.php';
+    }
+
+    // 主题只算一次：一个页面里 index.php 会连续调用两次
+    static $theme = null;
+    if ($theme === null) {
+        $theme = '';
+        if (class_exists('View')) {
+            $theme = (string) View::getInstance()->getTheme();
+        }
+
+        // 用户中心是独立入口，不经过 Dispatcher，View 里通常还没有主题。
+        // 这里按 Dispatcher::getActiveTheme() 的同一规则现算一次（含商户 scope + 设备）。
+        if ($theme === '' && class_exists('MerchantContext') && class_exists('TemplateModel')) {
+            try {
+                $scope = MerchantContext::currentId() > 0
+                    ? 'merchant_' . MerchantContext::currentId()
+                    : 'main';
+                $templateModel = new TemplateModel();
+                $theme = (string) $templateModel->getEffectiveTheme(
+                    TemplateModel::detectClientFromRequest(),
+                    $scope
+                );
+            } catch (Throwable $e) {
+                $theme = '';
+            }
+        }
+    }
+
+    $themes = [];
+    if ($theme !== '') {
+        $themes[] = $theme;
+    }
+    $themes[] = 'default';
+
+    foreach (array_unique($themes) as $candidate) {
+        $file = EM_ROOT . '/content/template/' . $candidate . '/user/' . $name . '.php';
+        if (is_file($file)) {
+            return $file;
+        }
+    }
+
+    return EM_ROOT . '/user/view/' . $name . '.php';
+}

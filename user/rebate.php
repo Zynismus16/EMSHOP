@@ -72,9 +72,9 @@ $teamCountNum               = (int) ($teamCount['cnt'] ?? 0);
 
 if (Request::isPjax()) {
     echo '<div id="userContent" class="uc-content">';
-    include __DIR__ . '/view/rebate.php';
+    include userViewFile('rebate');
     echo '</div>';
 } else {
-    $userContentView = __DIR__ . '/view/rebate.php';
+    $userContentView = userViewFile('rebate');
     require __DIR__ . '/index.php';
 }
