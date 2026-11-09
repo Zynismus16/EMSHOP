@@ -418,7 +418,7 @@ $statusMap = [
 
 <main id="foContent" class="fo-wrap">
 <?php if ($detailOrderNo !== ''): ?>
-    <?php include __DIR__ . '/view/guest_order_detail.php'; ?>
+    <?php include userViewFile('guest_order_detail'); ?>
 <?php else: ?>
     <!-- 查单列表（默认）：hero 标题 + 三 tab 查询面板 -->
     <div class="fo-card">
@@ -426,7 +426,7 @@ $statusMap = [
             <div class="fo-hero__title">订单查询</div>
             <div class="fo-hero__sub">输入订单号或联系方式查看订单状态</div>
         </div>
-        <?php include __DIR__ . '/view/find_order.php'; ?>
+        <?php include userViewFile('find_order'); ?>
     </div>
 <?php endif; ?>
 </main>

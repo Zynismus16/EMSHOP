@@ -50,9 +50,9 @@ if ($orderNo !== '') {
 
 if (Request::isPjax()) {
     echo '<div id="userContent" class="uc-content">';
-    include __DIR__ . '/view/order_detail.php';
+    include userViewFile('order_detail');
     echo '</div>';
 } else {
-    $userContentView = __DIR__ . '/view/order_detail.php';
+    $userContentView = userViewFile('order_detail');
     require __DIR__ . '/index_public.php';
 }

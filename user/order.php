@@ -124,9 +124,9 @@ $pendingDeliveryHash = $pendingSnapPairs === [] ? 'empty' : md5(implode("\n", $p
 
 if (Request::isPjax()) {
     echo '<div id="userContent" class="uc-content">';
-    include __DIR__ . '/view/order.php';
+    include userViewFile('order');
     echo '</div>';
 } else {
-    $userContentView = __DIR__ . '/view/order.php';
+    $userContentView = userViewFile('order');
     require __DIR__ . '/index.php';
 }

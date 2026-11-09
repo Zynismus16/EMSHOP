@@ -17,7 +17,7 @@ $displayMoney = Currency::displayAmount((int) ($frontUser['money'] ?? 0), null, 
 $currencySymbol = Currency::visitorSymbol();
 
 if (empty($userContentView)) {
-    $userContentView = __DIR__ . '/view/home.php';
+    $userContentView = userViewFile('home');
 }
 
-include __DIR__ . '/view/index.php';
+include userViewFile('index');

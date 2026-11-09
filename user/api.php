@@ -67,9 +67,9 @@ if (Request::isPost()) {
 
 if (Request::isPjax()) {
     echo '<div id="userContent" class="uc-content">';
-    include __DIR__ . '/view/api.php';
+    include userViewFile('api');
     echo '</div>';
 } else {
-    $userContentView = __DIR__ . '/view/api.php';
+    $userContentView = userViewFile('api');
     require __DIR__ . '/index.php';
 }

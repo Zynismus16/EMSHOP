@@ -29,9 +29,9 @@ $totalPages = $result['total_pages'];
 
 if (Request::isPjax()) {
     echo '<div id="userContent" class="uc-content">';
-    include __DIR__ . '/view/balance_log.php';
+    include userViewFile('balance_log');
     echo '</div>';
 } else {
-    $userContentView = __DIR__ . '/view/balance_log.php';
+    $userContentView = userViewFile('balance_log');
     require __DIR__ . '/index.php';
 }

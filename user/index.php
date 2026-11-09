@@ -21,7 +21,7 @@ $currencySymbol = Currency::visitorSymbol();
 
 // 默认内容视图：个人中心首页
 if (empty($userContentView)) {
-    $userContentView = __DIR__ . '/view/home.php';
+    $userContentView = userViewFile('home');
 }
 
-include __DIR__ . '/view/index.php';
+include userViewFile('index');

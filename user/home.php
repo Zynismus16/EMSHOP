@@ -18,9 +18,9 @@ if (!empty($frontUser['money'])) {
 
 if (Request::isPjax()) {
     echo '<div id="userContent" class="uc-content">';
-    include __DIR__ . '/view/home.php';
+    include userViewFile('home');
     echo '</div>';
 } else {
-    $userContentView = __DIR__ . '/view/home.php';
+    $userContentView = userViewFile('home');
     require __DIR__ . '/index.php';
 }

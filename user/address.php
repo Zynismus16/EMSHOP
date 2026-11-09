@@ -117,9 +117,9 @@ $addressList = UserAddressModel::listByUserId($userId);
 
 if (Request::isPjax()) {
     echo '<div id="userContent" class="uc-content">';
-    include __DIR__ . '/view/address.php';
+    include userViewFile('address');
     echo '</div>';
 } else {
-    $userContentView = __DIR__ . '/view/address.php';
+    $userContentView = userViewFile('address');
     require __DIR__ . '/index.php';
 }

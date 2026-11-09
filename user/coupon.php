@@ -49,9 +49,9 @@ $viewTabs = [
 
 if (Request::isPjax()) {
     echo '<div id="userContent" class="uc-content">';
-    include __DIR__ . '/view/coupon.php';
+    include userViewFile('coupon');
     echo '</div>';
 } else {
-    $userContentView = __DIR__ . '/view/coupon.php';
+    $userContentView = userViewFile('coupon');
     require __DIR__ . '/index.php';
 }
