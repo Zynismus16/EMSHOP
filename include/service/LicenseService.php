@@ -600,20 +600,16 @@ final class LicenseService
     }
 
     /**
-     * 注册官方账号（邮箱 + 验证码 + 密码）。注册成功即登录，直接落 token。
+     * 注册官方账号（邮箱 + 密码）。注册成功即登录，直接落 token。
      *
-     * @throws RuntimeException 参数不合法 / 验证码错误 / 邮箱已注册 / 上游拒绝
+     * @throws RuntimeException 参数不合法 / 邮箱已注册 / 上游拒绝
      */
-    public static function registerOfficialAccount(string $email, string $code, string $password, string $passwordConfirmation): array
+    public static function registerOfficialAccount(string $email, string $password, string $passwordConfirmation): array
     {
         $email = strtolower(trim($email));
-        $code  = trim($code);
 
         if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
             throw new RuntimeException('邮箱格式不正确');
-        }
-        if (strlen($code) !== 6 || !ctype_digit($code)) {
-            throw new RuntimeException('请输入 6 位邮箱验证码');
         }
         if (strlen($password) < 6 || strlen($password) > 16) {
             throw new RuntimeException('密码长度需为 6-16 位');
@@ -624,7 +620,6 @@ final class LicenseService
 
         return self::storeOfficialAccount(LicenseClient::accountRegister([
             'email'                 => $email,
-            'code'                  => $code,
             'password'              => $password,
             'password_confirmation' => $passwordConfirmation,
             // 与登录一致：注册即签长期 token（官方站 10 年）

@@ -298,7 +298,7 @@ final class LicenseClient
     /**
      * 注册官方账号（POST /api/auth/register）。
      *
-     * 必填：email / code（6 位邮箱验证码）/ password / password_confirmation
+     * 必填：email / password / password_confirmation（不再发送邮箱验证码）
      * 成功回 201 + {code:0, data:{token, user}} —— 注册即登录，直接当登录结果用。
      *
      * @param array<string, string> $payload

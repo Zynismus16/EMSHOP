@@ -8,6 +8,10 @@ if (!defined('EM_ROOT')) {
 $pageTitle  = '登录官方账号';
 $initialTab = ($initialTab ?? 'login') === 'register' ? 'register' : 'login';
 
+// EmToast（全站统一浮动提示）；样式须排在 layui.css 之后
+$extraHead  = '<link rel="stylesheet" href="/content/static/css/em-toast.css">'
+            . '<script src="/content/static/js/em-toast.js"></script>';
+
 include __DIR__ . '/header.php';
 ?>
 
@@ -89,17 +93,6 @@ include __DIR__ . '/header.php';
                 </div>
             </div>
             <div class="form-group">
-                <label class="form-group__label" for="olgRegCode">验证码</label>
-                <div class="olg-code-row">
-                    <div class="olg-field">
-                        <i class="fa fa-shield"></i>
-                        <input type="text" class="form-group__input" id="olgRegCode"
-                               placeholder="6 位邮箱验证码" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
-                    </div>
-                    <button type="button" class="olg-code-btn" id="olgRegCodeBtn">获取验证码</button>
-                </div>
-            </div>
-            <div class="form-group">
                 <label class="form-group__label" for="olgRegPassword">密码</label>
                 <div class="olg-field">
                     <i class="fa fa-lock"></i>
@@ -116,8 +109,6 @@ include __DIR__ . '/header.php';
                 </div>
             </div>
             <button type="button" class="olg-submit" id="olgRegister">注册并登录</button>
-
-            <div class="form-group__error" id="olgRegError"></div>
         </div>
     </div>
 </div>
@@ -245,7 +236,7 @@ $(function () {
             register: {
                 icon: 'fa fa-user-plus',
                 title: '注册官方账号',
-                sub: '邮箱验证后创建，注册成功自动登录'
+                sub: '填写邮箱和密码，注册成功自动登录'
             }
         };
 
@@ -404,10 +395,6 @@ $(function () {
             sendCode($('#olgLoginEmail').val(), 'login', $(this), 'login');
         });
 
-        $('#olgRegCodeBtn').on('click', function () {
-            sendCode($('#olgRegEmail').val(), 'register', $(this), 'register');
-        });
-
         /* ---------- 登录 / 注册 ---------- */
         function submitLoginPassword() {
             var $btn = $('#olgLogin');
@@ -466,37 +453,33 @@ $(function () {
             if ($btn.prop('disabled')) return;
 
             var email = $.trim(String($('#olgRegEmail').val() || ''));
-            var code = $.trim(String($('#olgRegCode').val() || ''));
             var password = String($('#olgRegPassword').val() || '');
             var confirm = String($('#olgRegConfirm').val() || '');
 
-            clearError('register');
-            if (email === '') { showError('register', '请输入邮箱'); return; }
-            if (code === '') { showError('register', '请输入验证码'); return; }
+            if (email === '') { EmToast.err('请输入邮箱'); return; }
             if (password.length < 6 || password.length > 16) {
-                showError('register', '密码长度需为 6-16 位');
+                EmToast.err('密码长度需为 6-16 位');
                 return;
             }
-            if (password !== confirm) { showError('register', '两次输入的密码不一致'); return; }
+            if (password !== confirm) { EmToast.err('两次输入的密码不一致'); return; }
 
             $btn.prop('disabled', true).text('注册中…');
 
             post({
                 _action: 'official_register',
                 email: email,
-                code: code,
                 password: password,
                 password_confirmation: confirm
             }).done(function (res) {
                 if (!res || res.code !== 200) {
                     $btn.prop('disabled', false).text('注册并登录');
-                    showError('register', (res && res.msg) || '注册失败');
+                    EmToast.err((res && res.msg) || '注册失败');
                     return;
                 }
                 notifyAndClose();
             }).fail(function () {
                 $btn.prop('disabled', false).text('注册并登录');
-                showError('register', '网络异常，请稍后重试');
+                EmToast.err('网络异常，请稍后重试');
             });
         }
 
@@ -510,7 +493,7 @@ $(function () {
         $('#olgLoginEmail, #olgLoginCode').on('keydown', function (e) {
             if (e.key === 'Enter') { e.preventDefault(); submitLoginCode(); }
         });
-        $('#olgRegEmail, #olgRegCode, #olgRegPassword, #olgRegConfirm').on('keydown', function (e) {
+        $('#olgRegEmail, #olgRegPassword, #olgRegConfirm').on('keydown', function (e) {
             if (e.key === 'Enter') { e.preventDefault(); submitRegister(); }
         });
 

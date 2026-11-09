@@ -122,7 +122,6 @@ if (Request::isPost()) {
             case 'official_register':
                 $profile = LicenseService::registerOfficialAccount(
                     (string) Input::post('email', ''),
-                    (string) Input::post('code', ''),
                     (string) Input::post('password', ''),
                     (string) Input::post('password_confirmation', '')
                 );
